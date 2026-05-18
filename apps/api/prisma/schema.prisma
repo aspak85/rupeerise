@@ -11,7 +11,7 @@ datasource db {
   //     npx prisma migrate dev --name init   # against your Neon URL
   //
   // After that, commit prisma/migrations and push — Render will replay them.
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
