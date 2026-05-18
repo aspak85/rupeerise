@@ -1,0 +1,245 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  // Local development uses SQLite (file:./dev.db) for zero-config setup.
+  //
+  // Before deploying to production (Render + Neon Postgres), run:
+  //     cd apps\api
+  //     npm run prepare:prod   # flips this provider to "postgresql"
+  //     npx prisma migrate dev --name init   # against your Neon URL
+  //
+  // After that, commit prisma/migrations and push — Render will replay them.
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String   @id @default(cuid())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  email         String   @unique
+  phone         String?
+  name          String?
+  firstName     String?
+  lastName      String?
+  passwordHash  String?
+  referralCode  String   @unique
+  referredById  String?
+  role          String   @default("user")
+  status        String   @default("active") // active|blocked
+  kycVerified   Boolean  @default(false)
+  lastLoginAt   DateTime?
+  lastIp        String?
+  ReferralEdges ReferralEdge[] @relation("ref_edges_parent")
+  ReferralChild ReferralEdge?  @relation("ref_edges_child")
+  Investments   Investment[]
+  Wallets       Wallet[]
+  DailyClaims   DailyClaim[]
+  Withdrawals   Withdrawal[]
+  Transactions  Transaction[]
+  Deposits      Deposit[]
+  Notifications Notification[]
+}
+
+model Plan {
+  id           String   @id @default(cuid())
+  name         String
+  price        Int
+  dailyIncome  Int
+  durationDays Int
+  active       Boolean  @default(true)
+  Investments  Investment[]
+}
+
+model Investment {
+  id          String   @id @default(cuid())
+  userId      String
+  planId      String
+  startedAt   DateTime @default(now())
+  endsAt      DateTime
+  remainingDays Int
+  status      String   @default("active")
+  User        User     @relation(fields: [userId], references: [id])
+  Plan        Plan     @relation(fields: [planId], references: [id])
+}
+
+model Wallet {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String   // deposit|earnings|bonus|referral|withdrawal
+  balance   Decimal  @default(0)
+  User      User     @relation(fields: [userId], references: [id])
+  @@unique([userId, type])
+}
+
+model Transaction {
+  id           String   @id @default(cuid())
+  createdAt    DateTime @default(now())
+  userId       String
+  walletType   String
+  amount       Decimal
+  direction    String   // credit|debit
+  reason       String
+  refId        String?
+  idempotencyKey String? @unique
+  User         User     @relation(fields: [userId], references: [id])
+}
+
+model DailyClaim {
+  id        String   @id @default(cuid())
+  userId    String
+  claimedAt DateTime @default(now())
+  dayKey    String
+  amount    Decimal  @default(0)
+  User      User     @relation(fields: [userId], references: [id])
+  @@unique([userId, dayKey])
+}
+
+model Withdrawal {
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+  userId      String
+  amount      Decimal
+  feePercent  Int
+  netAmount   Decimal
+  method      String
+  accountJson String
+  status      String   @default("pending")
+  payoutRef   String?
+  User        User     @relation(fields: [userId], references: [id])
+}
+
+model ReferralEdge {
+  id          String   @id @default(cuid())
+  parentId    String
+  childId     String   @unique
+  level       Int
+  createdAt   DateTime @default(now())
+  Parent      User     @relation("ref_edges_parent", fields: [parentId], references: [id])
+  Child       User     @relation("ref_edges_child", fields: [childId], references: [id])
+}
+
+model VipLevel {
+  id                String   @id @default(cuid())
+  name              String
+  requiredBusiness  Int
+}
+
+model Deposit {
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+  userId      String
+  amount      Decimal
+  method      String   // razorpay|upi|manual_utr
+  utr         String?
+  gatewayRef  String?
+  status      String   @default("pending") // pending|approved|rejected
+  reviewedBy  String?
+  reviewedAt  DateTime?
+  note        String?
+  User        User     @relation(fields: [userId], references: [id])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  userId    String
+  title     String
+  body      String
+  read      Boolean  @default(false)
+  User      User     @relation(fields: [userId], references: [id])
+}
+
+model ActivityLog {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  userId    String?
+  action    String
+  meta      String?
+  ip        String?
+}
+
+model DailyReward {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  userId    String
+  type      String   // spin|scratch
+  dayKey    String
+  amount    Decimal  @default(0)
+  meta      String?
+  @@unique([userId, type, dayKey])
+}
+
+/// Admin-configurable payment channels (UPI IDs, bank accounts, etc.)
+/// shown on the user wallet page. The default channel becomes the primary QR.
+model PaymentChannel {
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  /// kind: "upi" | "bank" | "crypto" | "other"
+  kind        String   @default("upi")
+  /// label shown to the user, e.g. "Primary UPI (PhonePe)"
+  label       String
+  /// the actual value — UPI VPA, account number, etc.
+  value       String
+  /// payee name shown in UPI deep link
+  payeeName   String   @default("RupeeRise")
+  /// free-form extra notes shown next to the channel
+  note        String?
+  /// extra fields json — bank ifsc, holder name, crypto network, etc.
+  metaJson    String?
+  active      Boolean  @default(true)
+  isDefault   Boolean  @default(false)
+  /// optional UI ordering — lower comes first
+  sortOrder   Int      @default(0)
+}
+
+/// Generic key-value store for admin-configurable JSON settings.
+/// Keys we use:
+///   "reward_config"  → { spin: {prizes: number[], weights?: number[]}, scratch: {table: {amount,weight}[]}, spin_enabled, scratch_enabled, daily_max_per_user }
+///   "support_config" → { contacts: [{kind,label,handle,url,note}], channels: [{label,url,icon,note}] }
+model AppSetting {
+  key       String   @id
+  value     String   // JSON string
+  updatedAt DateTime @updatedAt
+}
+
+/// Admin-issued promo / gift codes that any user can redeem to top up the
+/// bonus wallet. Single-use by default (maxClaims=1). For mass-distribution
+/// vouchers, increase maxClaims and the same code is shared by many users.
+model GiftCode {
+  id          String      @id @default(cuid())
+  createdAt   DateTime    @default(now())
+  /// Public alphanumeric code (uppercased, unique). Users enter this.
+  code        String      @unique
+  /// INR credited to bonus wallet on each successful claim.
+  amount      Int
+  /// Hard cap on total claims. 1 = single-use voucher.
+  maxClaims   Int         @default(1)
+  /// Counter incremented atomically on each claim.
+  claimsCount Int         @default(0)
+  /// Optional auto-expiry (UTC). Null = never expires.
+  expiresAt   DateTime?
+  /// active|disabled — admins can disable without deleting (audit trail).
+  status      String      @default("active")
+  /// Internal notes (e.g. "Diwali 2025 campaign").
+  notes       String?
+  /// Admin user id who created this code.
+  createdBy   String?
+  /// One claim record per (code, user). Enforces "no double claim" via DB.
+  Claims      GiftClaim[]
+}
+
+/// One row per (giftCode, user) successful redemption. Acts as the
+/// idempotency check for repeat redemption attempts on multi-use codes.
+model GiftClaim {
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+  giftCodeId  String
+  userId      String
+  amount      Int
+  GiftCode    GiftCode @relation(fields: [giftCodeId], references: [id], onDelete: Cascade)
+  @@unique([giftCodeId, userId])
+}

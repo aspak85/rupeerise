@@ -1,0 +1,51 @@
+# Render Blueprint for RupeeRise API
+# -----------------------------------------------------------------------------
+# Usage:
+#   1. Push this repo to GitHub.
+#   2. In Render dashboard: New -> Blueprint -> connect your repo.
+#   3. Render will read this file and create the API service.
+#   4. After creation, fill in the secrets in the Environment tab.
+# -----------------------------------------------------------------------------
+services:
+  - type: web
+    name: rupeerise-api
+    env: node
+    plan: free
+    rootDir: apps/api
+    buildCommand: npm install && npm run build
+    startCommand: npm run start:prod
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      # Render injects PORT automatically on the free plan, but keeping this
+      # explicit avoids surprises. The app reads process.env.PORT directly.
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: WEB_ORIGIN
+        sync: false
+      - key: ADMIN_EMAILS
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: MAIL_FROM
+        sync: false
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+      - key: UPI_ID
+        sync: false

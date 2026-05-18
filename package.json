@@ -1,0 +1,13 @@
+{
+  "name": "rupeerise",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm -ws --if-present run dev",
+    "build": "npm -ws --if-present run build",
+    "start": "npm -ws --if-present run start"
+  }
+}
