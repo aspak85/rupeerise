@@ -12,10 +12,30 @@ try {
 }
 
 let transporter: any = null;
+let transporterLogged = false;
 function getTransporter() {
-  if (!nodemailer) return null;
+  if (!nodemailer) {
+    if (!transporterLogged) {
+      console.warn('[mail] nodemailer module not loaded');
+      transporterLogged = true;
+    }
+    return null;
+  }
   if (transporter) return transporter;
-  if (!env.SMTP_HOST || !env.SMTP_USER || !env.SMTP_PASS) return null;
+  if (!env.SMTP_HOST || !env.SMTP_USER || !env.SMTP_PASS) {
+    if (!transporterLogged) {
+      console.warn(
+        `[mail] SMTP env incomplete: host=${env.SMTP_HOST ? 'set' : 'MISSING'} user=${
+          env.SMTP_USER ? 'set' : 'MISSING'
+        } pass=${env.SMTP_PASS ? `set(len=${env.SMTP_PASS.length})` : 'MISSING'}`,
+      );
+      transporterLogged = true;
+    }
+    return null;
+  }
+  console.log(
+    `[mail] creating transporter host=${env.SMTP_HOST} port=${env.SMTP_PORT} user=${env.SMTP_USER}`,
+  );
   transporter = nodemailer.createTransport({
     host: env.SMTP_HOST,
     port: env.SMTP_PORT,
@@ -40,8 +60,18 @@ export async function sendMail({ to, subject, text, html }: SendMailOpts): Promi
     console.log('[/DEV MAIL]\n');
     return { delivered: false };
   }
-  const info = await t.sendMail({ from, to, subject, text, html: html || undefined });
-  return { delivered: true, preview: info?.messageId };
+  try {
+    const info = await t.sendMail({ from, to, subject, text, html: html || undefined });
+    console.log(`[mail] sent to=${to} messageId=${info?.messageId}`);
+    return { delivered: true, preview: info?.messageId };
+  } catch (e: any) {
+    // Surface the full SMTP error so it appears in Render Logs. Gmail returns
+    // very specific codes here: 535 = bad auth, 534 = needs app password, etc.
+    console.error(
+      `[mail] sendMail failed to=${to} code=${e?.code || 'n/a'} response=${e?.response || 'n/a'} message=${e?.message || String(e)}`,
+    );
+    throw e;
+  }
 }
 
 export function otpEmail(code: string) {
