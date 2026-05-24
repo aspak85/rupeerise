@@ -23,7 +23,7 @@ services:
       - key: NODE_ENV
         value: production
       - key: PORT
-        value: 10000
+        value: "10000"
       # Render injects PORT automatically on the free plan, but keeping this
       # explicit avoids surprises. The app reads process.env.PORT directly.
       - key: DATABASE_URL

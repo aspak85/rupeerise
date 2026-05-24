@@ -90,7 +90,16 @@ app.use((req, res) => {
   res.status(404).json({ error: 'Not Found', path: req.path });
 });
 
-const port = process.env.PORT ? Number(process.env.PORT) : 4000;
+// PORT resolution is defensive: Render sometimes passes the var with surrounding
+// whitespace or as an empty string when the dashboard env tab is misconfigured.
+// We never want app.listen() to receive NaN — that crashes the whole process.
+const rawPort = (process.env.PORT ?? '').trim();
+const parsedPort = rawPort.length ? Number(rawPort) : NaN;
+const port =
+  Number.isFinite(parsedPort) && parsedPort > 0 && parsedPort < 65536
+    ? parsedPort
+    : 10000;
+console.log(`[boot] PORT env='${rawPort}' parsed=${parsedPort} using=${port}`);
 app.listen(port, async () => {
   console.log(`API listening on http://localhost:${port}`);
   // Auto-seed defaults on boot (idempotent). Failures are non-fatal so the
