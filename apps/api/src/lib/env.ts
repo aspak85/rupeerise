@@ -20,6 +20,9 @@ export const env = {
   SMTP_USER: s(process.env.SMTP_USER),
   SMTP_PASS: s(process.env.SMTP_PASS),
   MAIL_FROM: s(process.env.MAIL_FROM),
+  // Resend HTTP API key (preferred over SMTP because Render blocks outbound
+  // SMTP ports 587/465). Sign up at resend.com — 100 free emails/day.
+  RESEND_API_KEY: s(process.env.RESEND_API_KEY),
   ADMIN_EMAILS: sd(process.env.ADMIN_EMAILS, ''),
   // Plaintext admin password from .env. Hashed (bcrypt) into User.passwordHash
   // for each email in ADMIN_EMAILS on every API boot. Change the .env value

@@ -52,9 +52,49 @@ function getTransporter() {
 
 export type SendMailOpts = { to: string; subject: string; text: string; html?: string };
 
+async function sendViaResend({ to, subject, text, html, from }: SendMailOpts & { from: string }) {
+  const apiKey = env.RESEND_API_KEY;
+  if (!apiKey) return null; // not configured
+  console.log(`[mail/resend] sending to=${to} from=${from}`);
+  const res = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ from, to, subject, text, html: html || undefined }),
+  });
+  const bodyText = await res.text();
+  if (!res.ok) {
+    console.error(`[mail/resend] failed status=${res.status} body=${bodyText}`);
+    throw new Error(`Resend ${res.status}: ${bodyText}`);
+  }
+  let id: string | undefined;
+  try {
+    id = JSON.parse(bodyText)?.id;
+  } catch {
+    /* ignore */
+  }
+  console.log(`[mail/resend] sent to=${to} id=${id ?? 'n/a'}`);
+  return { delivered: true, preview: id };
+}
+
 export async function sendMail({ to, subject, text, html }: SendMailOpts): Promise<{ delivered: boolean; preview?: string }> {
+  const from = env.MAIL_FROM || 'RupeeRise <onboarding@resend.dev>';
+
+  // Preferred path: Resend HTTP API (works on Render where SMTP outbound is
+  // blocked). Falls through to SMTP only if RESEND_API_KEY is not set.
+  if (env.RESEND_API_KEY) {
+    try {
+      const r = await sendViaResend({ to, subject, text, html, from });
+      if (r) return r;
+    } catch (e: any) {
+      console.error(`[mail] resend send failed: ${e?.message || e}`);
+      // fall through to SMTP attempt as last resort
+    }
+  }
+
   const t = getTransporter();
-  const from = env.MAIL_FROM || 'RupeeRise <no-reply@rupeerise.local>';
   if (!t) {
     // Dev fallback: log to console so devs can grab the OTP
     console.log('\n[DEV MAIL]');
@@ -70,12 +110,10 @@ export async function sendMail({ to, subject, text, html }: SendMailOpts): Promi
     console.log(`[mail] sent to=${to} messageId=${info?.messageId}`);
     return { delivered: true, preview: info?.messageId };
   } catch (e: any) {
-    // Surface the full SMTP error so it appears in Render Logs. Gmail returns
-    // very specific codes here: 535 = bad auth, 534 = needs app password, etc.
     console.error(
       `[mail] sendMail failed to=${to} code=${e?.code || 'n/a'} response=${e?.response || 'n/a'} message=${e?.message || String(e)}`,
     );
-    throw e;
+    return { delivered: false };
   }
 }
 
