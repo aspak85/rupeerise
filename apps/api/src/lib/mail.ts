@@ -41,6 +41,11 @@ function getTransporter() {
     port: env.SMTP_PORT,
     secure: env.SMTP_PORT === 465, // 465 = SSL, 587/25 = STARTTLS
     auth: { user: env.SMTP_USER, pass: env.SMTP_PASS },
+    // Fail fast on Render so the HTTP request never hangs forever waiting on
+    // a stuck TCP/TLS handshake. Real-world Gmail usually answers in <2s.
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
   });
   return transporter;
 }
