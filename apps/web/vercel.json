@@ -6,7 +6,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://REPLACE_ME_API_HOST/:path*"
+      "destination": "https://rupeerise-api.onrender.com/:path*"
     }
   ]
 }
