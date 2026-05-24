@@ -6,11 +6,15 @@ import { requireAuth, AuthedRequest } from '../middleware/auth';
 import { postLedger } from '../lib/wallet';
 import { listActiveChannels, getDefaultChannel } from '../lib/paymentChannels';
 
-// Razorpay is loaded lazily via createRequire to stay compatible with our ESM build.
-import { createRequire } from 'module';
-const localRequire = createRequire(import.meta.url);
+// Razorpay is loaded lazily so a missing module doesn't kill the API; in
+// CommonJS output we can use require() directly.
 let Razorpay: any;
-try { Razorpay = localRequire('razorpay'); } catch { Razorpay = null; }
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  Razorpay = require('razorpay');
+} catch {
+  Razorpay = null;
+}
 
 const router = Router();
 

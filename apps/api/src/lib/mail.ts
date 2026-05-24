@@ -1,15 +1,14 @@
 import { env } from './env';
-import { createRequire } from 'module';
 
-// nodemailer is CommonJS — load it via createRequire so it works under our
-// tsx/ESM build (a bare `require()` is undefined in ESM modules).
-const localRequire = createRequire(import.meta.url);
-let nodemailer: any;
+// nodemailer is a required dependency in production. We import it statically
+// and wrap usage in try/catch lower down so missing SMTP config falls back to
+// console-printing OTPs instead of crashing.
+let nodemailer: any = null;
 try {
-  nodemailer = localRequire('nodemailer');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  nodemailer = require('nodemailer');
 } catch (e) {
   console.warn('[mail] nodemailer not installed — emails will fall back to console logs.');
-  nodemailer = null;
 }
 
 let transporter: any = null;
