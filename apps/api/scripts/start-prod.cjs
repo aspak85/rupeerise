@@ -43,5 +43,8 @@ if (hasMigrations) {
   run('npx', ['prisma', 'db', 'push', '--accept-data-loss']);
 }
 
-console.log('[start-prod] Booting API…');
-require('../dist/index.js');
+console.log('[start-prod] Booting API via tsx…');
+const tsxBin = require.resolve('tsx/cli');
+const entry = path.join(__dirname, '..', 'src', 'index.ts');
+const r = spawnSync(process.execPath, [tsxBin, entry], { stdio: 'inherit' });
+process.exit(r.status ?? 1);
