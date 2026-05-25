@@ -60,20 +60,35 @@ router.post('/request-otp', async (req, res) => {
   // Always log in dev for easy local testing
   console.log(`[DEV] OTP for ${email}: ${code}`);
 
-  // Try email delivery (no-op in dev if SMTP not configured)
-  const { text, html } = otpEmail(code);
-  let delivered = false;
-  try {
-    const r = await sendMail({ to: email, subject: `RupeeRise login code: ${code}`, text, html });
-    delivered = r.delivered;
-  } catch (e) {
-    console.error('Mail send failed:', e);
-  }
-
   // In dev mode (no SMTP configured), echo the OTP back so the UI can show it.
-  // This is GATED — once SMTP_HOST is set, this header is omitted entirely.
-  const isDevPreview = env.NODE_ENV !== 'production' && !env.SMTP_HOST;
-  return res.json({ success: true, delivered, ...(isDevPreview ? { devOtp: code } : {}) });
+  // This is GATED — once SMTP_HOST or RESEND_API_KEY is set, this is omitted.
+  const isDevPreview = env.NODE_ENV !== 'production' && !env.SMTP_HOST && !env.RESEND_API_KEY;
+
+  // Fire-and-forget mail delivery. Awaiting it on serverless platforms with
+  // a cold mail provider can keep the HTTP socket open for 10+ seconds, which
+  // makes the user think "OTP nahi aaya" — they hit the button again, get
+  // rate-limited, and lose trust. Returning immediately makes the UX snappy;
+  // the actual mail still goes out in the background, and any failure is
+  // logged loudly server-side for ops debugging.
+  const { text, html } = otpEmail(code);
+  void (async () => {
+    try {
+      const r = await sendMail({ to: email, subject: `RupeeRise login code: ${code}`, text, html });
+      console.log(`[mail/otp] async delivery to=${email} delivered=${r.delivered}`);
+    } catch (e) {
+      console.error('[mail/otp] async send failed:', e);
+    }
+  })();
+
+  // We optimistically report delivered:true when ANY mail provider is
+  // configured. The frontend can show "check your inbox / spam" — if there
+  // really was a transport failure, the user retries via the resend button.
+  const mailConfigured = !!env.RESEND_API_KEY || (!!env.SMTP_HOST && !!env.SMTP_USER && !!env.SMTP_PASS);
+  return res.json({
+    success: true,
+    delivered: mailConfigured,
+    ...(isDevPreview ? { devOtp: code } : {}),
+  });
 });
 
 /**

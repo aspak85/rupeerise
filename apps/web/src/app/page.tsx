@@ -1,29 +1,68 @@
+import dynamic from "next/dynamic";
 import Section from "@/components/Section";
 import Reveal from "@/components/Reveal";
 import PlansGrid from "@/components/PlansGrid";
 import SiteHeader from "@/components/SiteHeader";
-import Hero3D from "@/components/Hero3D";
-import PostersStrip from "@/components/PostersStrip";
-import TestimonialsMarquee from "@/components/TestimonialsMarquee";
-import PartnersMarquee from "@/components/PartnersMarquee";
 import LiveFeed from "@/components/LiveFeed";
 import Link from "next/link";
+
+// Heavy client components are dynamically imported so the initial HTML +
+// JS bundle stays small. On mobile / 3G this is the difference between a
+// flash-of-blank-screen and instantly visible content. SSR is enabled so
+// SEO + first-paint stay good.
+const Hero3D = dynamic(() => import("@/components/Hero3D"), {
+  loading: () => <HeroSkeleton />,
+});
+const PostersStrip = dynamic(() => import("@/components/PostersStrip"), { ssr: false });
+const PartnersMarquee = dynamic(() => import("@/components/PartnersMarquee"), { ssr: false });
+const TestimonialsMarquee = dynamic(() => import("@/components/TestimonialsMarquee"), { ssr: false });
+
+function HeroSkeleton() {
+  return (
+    <section className="relative px-6 pt-12 pb-16 sm:pt-16 sm:pb-20">
+      <div className="mx-auto max-w-6xl grid gap-10 lg:grid-cols-2">
+        <div>
+          <div className="h-6 w-56 rounded-full bg-yellow-500/10 animate-pulse" />
+          <div className="mt-5 h-12 w-72 rounded bg-white/5 animate-pulse" />
+          <div className="mt-3 h-12 w-80 rounded bg-white/5 animate-pulse" />
+          <div className="mt-3 h-12 w-64 rounded bg-white/5 animate-pulse" />
+          <div className="mt-7 h-11 w-44 rounded-xl bg-yellow-500/20 animate-pulse" />
+        </div>
+        <div className="hidden lg:block h-72 rounded-3xl border border-yellow-500/15 bg-black/30 animate-pulse" />
+      </div>
+    </section>
+  );
+}
+// ISR cache (5 min) so we don't hit the API on every request — critical for
+// mobile/cold-start speed. If the API is sleeping (Render free tier), Vercel
+// would otherwise block for 30+ seconds and the user gets a blank screen.
+export const revalidate = 300;
+
+const FALLBACK_PLANS = [
+  { name: 'Starter',   price:    500, daily_income:   25, duration_days:  30, total_return:    750 },
+  { name: 'Silver',    price:   2000, daily_income:  110, duration_days:  45, total_return:   4950 },
+  { name: 'Gold',      price:   5000, daily_income:  320, duration_days:  60, total_return:  19200 },
+  { name: 'VIP Elite', price:  10000, daily_income:  700, duration_days:  90, total_return:  63000 },
+  { name: 'Elite Pro', price:  25000, daily_income: 2000, duration_days: 120, total_return: 240000 },
+  { name: 'Tycoon',    price:  50000, daily_income: 4000, duration_days: 150, total_return: 600000 },
+  { name: 'Emperor',   price: 100000, daily_income: 8333, duration_days: 180, total_return:1499940 },
+];
+
 async function getPlans() {
   const api = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+  // Hard 3-second timeout: if the API is asleep we use fallback plans
+  // immediately rather than blocking the whole landing page render.
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 3000);
   try {
-    const res = await fetch(`${api}/plans`, { cache: 'no-store' });
+    const res = await fetch(`${api}/plans`, { signal: ctrl.signal, next: { revalidate: 300 } });
+    clearTimeout(timer);
+    if (!res.ok) return FALLBACK_PLANS;
     const data = await res.json();
-    return data.plans as Array<{ name: string; price: number; daily_income: number; duration_days: number; total_return: number }>;
+    return (data.plans as typeof FALLBACK_PLANS) || FALLBACK_PLANS;
   } catch {
-    return [
-      { name: 'Starter',   price:    500, daily_income:   25, duration_days:  30, total_return:    750 },
-      { name: 'Silver',    price:   2000, daily_income:  110, duration_days:  45, total_return:   4950 },
-      { name: 'Gold',      price:   5000, daily_income:  320, duration_days:  60, total_return:  19200 },
-      { name: 'VIP Elite', price:  10000, daily_income:  700, duration_days:  90, total_return:  63000 },
-      { name: 'Elite Pro', price:  25000, daily_income: 2000, duration_days: 120, total_return: 240000 },
-      { name: 'Tycoon',    price:  50000, daily_income: 4000, duration_days: 150, total_return: 600000 },
-      { name: 'Emperor',   price: 100000, daily_income: 8333, duration_days: 180, total_return:1499940 },
-    ];
+    clearTimeout(timer);
+    return FALLBACK_PLANS;
   }
 }
 
