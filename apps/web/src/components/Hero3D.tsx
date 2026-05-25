@@ -2,7 +2,7 @@
 import { motion, useMotionValue, useSpring, useTransform } from "framer-motion";
 import { ArrowRight, Sparkles, ShieldCheck, Zap, IndianRupee, BadgeCheck } from "lucide-react";
 import Link from "next/link";
-import { MouseEvent, useRef } from "react";
+import { MouseEvent, useEffect, useRef, useState } from "react";
 
 /**
  * Premium 3D-tilt hero. Cursor-driven rotateX/rotateY on the card,
@@ -13,6 +13,19 @@ export default function Hero3D() {
   const mx = useMotionValue(0);
   const my = useMotionValue(0);
 
+  // Disable 3D tilt + spring physics on touch devices and small screens.
+  // Touch users can't aim a mouse anyway, and the spring math was the
+  // single biggest GPU/CPU hog on low-end Android, causing scroll jank.
+  const [isDesktop, setIsDesktop] = useState(false);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mq = window.matchMedia('(min-width: 1024px) and (hover: hover) and (pointer: fine)');
+    const apply = () => setIsDesktop(mq.matches);
+    apply();
+    mq.addEventListener?.('change', apply);
+    return () => mq.removeEventListener?.('change', apply);
+  }, []);
+
   // smooth springs
   const sx = useSpring(mx, { stiffness: 100, damping: 12 });
   const sy = useSpring(my, { stiffness: 100, damping: 12 });
@@ -21,6 +34,7 @@ export default function Hero3D() {
   const rotateY = useTransform(sx, [-0.5, 0.5], [-12, 12]);
 
   const handleMouseMove = (e: MouseEvent) => {
+    if (!isDesktop) return; // skip on mobile/touch — saves CPU
     const rect = cardRef.current?.getBoundingClientRect();
     if (!rect) return;
     const x = (e.clientX - rect.left) / rect.width - 0.5;
@@ -82,15 +96,15 @@ export default function Hero3D() {
           </div>
         </motion.div>
 
-        {/* Right: 3D tilt card */}
+        {/* Right: 3D tilt card — only enables expensive transforms on desktop */}
         <motion.div
           ref={cardRef}
           onMouseMove={handleMouseMove}
           onMouseLeave={handleMouseLeave}
-          style={{ rotateX, rotateY, transformStyle: "preserve-3d" }}
-          initial={{ opacity: 0, scale: 0.9, rotateY: -12 }}
-          animate={{ opacity: 1, scale: 1, rotateY: 0 }}
-          transition={{ duration: 0.8, type: "spring" }}
+          style={isDesktop ? { rotateX, rotateY, transformStyle: "preserve-3d" } : undefined}
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.5 }}
           className="relative mx-auto w-full max-w-md will-change-transform"
         >
           <div className="relative rounded-3xl border border-yellow-500/30 bg-gradient-to-br from-[#1a1305] via-black to-[#1a0e1d] p-6 sm:p-8 shadow-[0_30px_80px_-20px_rgba(255,215,0,0.35)]">
@@ -122,12 +136,12 @@ export default function Hero3D() {
               <FloatChip icon="🎁" label="Referral" sub="+₹450" />
             </div>
 
-            {/* Coin sticker */}
+            {/* Coin sticker — floating animation only on desktop to keep mobile smooth */}
             <motion.div
-              animate={{ y: [0, -8, 0] }}
-              transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+              animate={isDesktop ? { y: [0, -8, 0] } : undefined}
+              transition={isDesktop ? { duration: 3, repeat: Infinity, ease: "easeInOut" } : undefined}
               className="absolute -top-6 -right-6 w-20 h-20 rounded-full bg-gradient-to-br from-yellow-300 via-yellow-500 to-amber-600 shadow-[0_10px_30px_rgba(255,215,0,0.4)] grid place-items-center text-3xl"
-              style={{ transform: "translateZ(60px)" }}
+              style={isDesktop ? { transform: "translateZ(60px)" } : undefined}
               aria-hidden
             >
               💰
