@@ -1,9 +1,22 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { CircleDollarSign, FileSearch, QrCode, Receipt, Shield, Zap } from "lucide-react";
+import {
+  ArrowLeft,
+  Banknote,
+  Bitcoin,
+  CircleDollarSign,
+  Copy,
+  FileSearch,
+  QrCode,
+  Receipt,
+  Shield,
+  Smartphone,
+  Zap,
+} from "lucide-react";
 import { api, formatINR } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import LiveFeed from "@/components/LiveFeed";
 
 type Deposit = {
   id: string;
@@ -77,6 +90,10 @@ export default function WalletPage() {
   const [utr, setUtr] = useState("");
   const [method, setMethod] = useState<"razorpay" | "manual_utr" | "upi">("razorpay");
   const [selectedChannelId, setSelectedChannelId] = useState<string | null>(null);
+  // Two-step deposit flow:
+  //   step 1 — user picks amount + payment channel (or Razorpay fast track)
+  //   step 2 — we render the channel-specific payment instructions (QR / bank / crypto)
+  const [step, setStep] = useState<1 | 2>(1);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<{ kind: "ok" | "err"; msg: string } | null>(null);
 
@@ -197,160 +214,323 @@ export default function WalletPage() {
         ))}
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="glass rounded-3xl p-6">
-          <div className="flex items-center justify-between gap-2 text-white">
-            <div className="flex items-center gap-2">
-              <CircleDollarSign size={18} className="text-yellow-300" />
-              <h3 className="font-semibold">Add Funds</h3>
-            </div>
-            <span className={`inline-flex items-center gap-1.5 text-[10px] uppercase tracking-widest px-2 py-1 rounded-full ${
-              razorpayLive ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30" : "bg-zinc-700/30 text-zinc-300 border border-zinc-600"
-            }`}>
-              {razorpayLive ? (<><Zap size={10} /> Instant</>) : (<><Shield size={10} /> Manual</>)}
-            </span>
-          </div>
-          <p className="mt-1 text-sm text-zinc-300">
-            {razorpayLive
-              ? "Pay securely with Cards, UPI, NetBanking or Wallets. Funds auto-credit to your Deposit Wallet."
-              : (
-                <>Scan the QR on the right and pay via any UPI app. Submit the UTR to credit your wallet.</>
-              )}
-          </p>
-
-          <div className="mt-4 grid gap-3">
-            <label className="block">
-              <div className="text-xs text-zinc-400 mb-1">Amount (₹)</div>
-              <input
-                type="number"
-                min={100}
-                value={amount}
-                onChange={(e) => setAmount(Math.max(0, Number(e.target.value)))}
-                className="w-full rounded-xl border border-yellow-500/20 bg-black/30 px-3 py-3 text-white focus:outline-none focus:border-yellow-500/50 text-lg font-semibold"
-              />
-            </label>
-            <div className="flex gap-2 flex-wrap">
-              {[500, 1000, 2000, 5000, 10000, 25000, 50000].map((v) => (
-                <button key={v} onClick={() => setAmount(v)} className={`rounded-lg border px-3 py-1.5 text-xs transition ${
-                  amount === v
-                    ? "border-yellow-500/60 bg-yellow-500/15 text-yellow-200"
-                    : "border-yellow-500/20 text-zinc-200 hover:bg-yellow-500/10"
-                }`}>
-                  ₹{v.toLocaleString("en-IN")}
-                </button>
-              ))}
-            </div>
-            <label className="block">
-              <div className="text-xs text-zinc-400 mb-1">Payment Method</div>
-              <select
-                value={method}
-                onChange={(e) => setMethod(e.target.value as any)}
-                className="w-full rounded-xl border border-yellow-500/20 bg-black/30 px-3 py-3 text-white focus:outline-none focus:border-yellow-500/50"
+      {/* === STEP 1 — amount + channel selection === */}
+      {step === 1 && (
+        <div className="grid gap-4 lg:grid-cols-3">
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="lg:col-span-2 glass rounded-3xl p-6"
+          >
+            <div className="flex items-center justify-between gap-2 text-white">
+              <div className="flex items-center gap-2">
+                <CircleDollarSign size={18} className="text-yellow-300" />
+                <h3 className="font-semibold">Add Funds · Step 1 of 2</h3>
+              </div>
+              <span
+                className={`inline-flex items-center gap-1.5 text-[10px] uppercase tracking-widest px-2 py-1 rounded-full ${
+                  razorpayLive
+                    ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30"
+                    : "bg-zinc-700/30 text-zinc-300 border border-zinc-600"
+                }`}
               >
-                {razorpayLive && <option value="razorpay">Razorpay — Cards / UPI / NetBanking (instant)</option>}
-                <option value="manual_utr">UPI / UTR (admin verifies)</option>
-              </select>
-            </label>
-            {method === "manual_utr" && (
+                {razorpayLive ? (<><Zap size={10} /> Instant available</>) : (<><Shield size={10} /> Manual</>)}
+              </span>
+            </div>
+            <p className="mt-1 text-sm text-zinc-300">
+              Enter the amount, then pick how you want to pay. UPI, bank transfer, and crypto are all accepted.
+            </p>
+
+            <div className="mt-5 grid gap-4">
               <label className="block">
-                <div className="text-xs text-zinc-400 mb-1">UTR / Reference Number</div>
+                <div className="text-xs text-zinc-400 mb-1">Amount (₹)</div>
                 <input
-                  value={utr}
-                  onChange={(e) => setUtr(e.target.value.toUpperCase().slice(0, 24))}
-                  placeholder="12-digit UTR from your bank app"
-                  className="w-full rounded-xl border border-yellow-500/20 bg-black/30 px-3 py-3 text-white focus:outline-none focus:border-yellow-500/50"
+                  type="number"
+                  min={100}
+                  value={amount}
+                  onChange={(e) => setAmount(Math.max(0, Number(e.target.value)))}
+                  className="w-full rounded-xl border border-yellow-500/20 bg-black/30 px-3 py-3 text-white focus:outline-none focus:border-yellow-500/50 text-lg font-semibold"
                 />
               </label>
-            )}
-            <button onClick={submit} disabled={busy} className="rounded-xl bg-[var(--primary)] py-3 font-semibold text-black hover:brightness-95 disabled:opacity-60 inline-flex items-center justify-center gap-2">
-              {busy ? "Working…" : method === "razorpay" ? (<><Zap size={16} /> Pay ₹{amount.toLocaleString("en-IN")} via Razorpay</>) : "Submit Deposit Request"}
-            </button>
-            {toast && (
-              <div className={`rounded-lg px-3 py-2 text-xs border ${toast.kind === "ok" ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-200" : "bg-red-500/10 border-red-500/30 text-red-200"}`}>
-                {toast.msg}
-              </div>
-            )}
-          </div>
-        </motion.div>
-
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }} className="glass rounded-3xl p-6">
-          <div className="flex items-center justify-between gap-2 text-white">
-            <div className="flex items-center gap-2">
-              <QrCode size={18} className="text-yellow-300" />
-              <h3 className="font-semibold">Scan & Pay (UPI)</h3>
-            </div>
-            <span className="text-[10px] uppercase tracking-widest text-zinc-400">amount ₹{amount.toLocaleString("en-IN")}</span>
-          </div>
-
-          {(() => {
-            const channels = config?.channels ?? [];
-            const upiChannels = channels.filter((c) => c.kind === "upi");
-            const selected =
-              upiChannels.find((c) => c.id === selectedChannelId) ||
-              upiChannels.find((c) => c.isDefault) ||
-              upiChannels[0] ||
-              ({ id: "fallback", kind: "upi", label: "Primary UPI", value: config?.upiId || "rupeerise@upi", payeeName: "RupeeRise", note: null, isDefault: true } as PaymentChannel);
-
-            return (
-              <>
-                {upiChannels.length > 1 && (
-                  <label className="block mt-4">
-                    <div className="text-xs text-zinc-400 mb-1">Payment Channel</div>
-                    <select
-                      value={selected.id}
-                      onChange={(e) => setSelectedChannelId(e.target.value)}
-                      className="w-full rounded-xl border border-yellow-500/20 bg-black/30 px-3 py-2.5 text-sm text-white focus:outline-none focus:border-yellow-500/50"
-                    >
-                      {upiChannels.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.label}{c.isDefault ? " (default)" : ""}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                )}
-
-                <div className="mt-4 rounded-2xl border border-yellow-500/20 bg-white p-4 flex items-center justify-center">
-                  {/* Real scannable UPI QR — encodes the deep link with the exact amount. */}
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={upiQrUrl(selected, amount)}
-                    alt="UPI QR code"
-                    width={220}
-                    height={220}
-                    className="rounded-lg"
-                  />
-                </div>
-                <div className="mt-4 grid gap-2">
-                  <a
-                    href={upiPayLink(selected, amount)}
-                    className="text-center rounded-xl border border-yellow-500/30 px-3 py-2.5 text-sm font-semibold text-yellow-200 hover:bg-yellow-500/10 transition sm:hidden"
+              <div className="flex gap-2 flex-wrap">
+                {[500, 1000, 2000, 5000, 10000, 25000, 50000].map((v) => (
+                  <button
+                    key={v}
+                    onClick={() => setAmount(v)}
+                    className={`rounded-lg border px-3 py-1.5 text-xs transition ${
+                      amount === v
+                        ? "border-yellow-500/60 bg-yellow-500/15 text-yellow-200"
+                        : "border-yellow-500/20 text-zinc-200 hover:bg-yellow-500/10"
+                    }`}
                   >
-                    Open in UPI app
-                  </a>
-                  <div className="text-sm text-zinc-300 text-center">
-                    <span className="text-zinc-500">{selected.label} · </span>UPI ID:{" "}
+                    ₹{v.toLocaleString("en-IN")}
+                  </button>
+                ))}
+              </div>
+
+              <div className="mt-2">
+                <div className="text-xs text-zinc-400 mb-2">Choose deposit channel</div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {razorpayLive && (
                     <button
-                      type="button"
-                      onClick={() => navigator?.clipboard?.writeText(selected.value).catch(() => {})}
-                      className="gold-text font-semibold hover:underline inline-flex items-center gap-1"
-                      title="Tap to copy"
+                      onClick={() => {
+                        setMethod("razorpay");
+                        setSelectedChannelId(null);
+                        if (amount < 100) {
+                          setToast({ kind: "err", msg: "Minimum deposit is ₹100" });
+                          return;
+                        }
+                        payWithRazorpay();
+                      }}
+                      className="text-left rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 hover:bg-emerald-500/15 transition"
                     >
-                      {selected.value}
+                      <div className="flex items-center gap-2 text-emerald-200 font-semibold">
+                        <Zap size={16} /> Razorpay — Instant
+                      </div>
+                      <div className="mt-1 text-xs text-emerald-100/80">
+                        Cards · UPI · NetBanking · Wallets. Auto-credits within seconds.
+                      </div>
+                    </button>
+                  )}
+
+                  {(config?.channels ?? []).map((c) => {
+                    const Icon = c.kind === "bank" ? Banknote : c.kind === "crypto" ? Bitcoin : Smartphone;
+                    const tone =
+                      c.kind === "bank"
+                        ? "border-sky-500/30 bg-sky-500/10 text-sky-200 hover:bg-sky-500/15"
+                        : c.kind === "crypto"
+                        ? "border-fuchsia-500/30 bg-fuchsia-500/10 text-fuchsia-200 hover:bg-fuchsia-500/15"
+                        : "border-yellow-500/30 bg-yellow-500/10 text-yellow-200 hover:bg-yellow-500/15";
+                    const kindLabel = c.kind === "bank" ? "Bank Transfer" : c.kind === "crypto" ? "Crypto" : "UPI";
+                    return (
+                      <button
+                        key={c.id}
+                        onClick={() => {
+                          if (amount < 100) {
+                            setToast({ kind: "err", msg: "Minimum deposit is ₹100" });
+                            return;
+                          }
+                          setSelectedChannelId(c.id);
+                          setMethod("manual_utr");
+                          setStep(2);
+                          setToast(null);
+                        }}
+                        className={`text-left rounded-2xl border p-4 transition ${tone}`}
+                      >
+                        <div className="flex items-center gap-2 font-semibold">
+                          <Icon size={16} /> {c.label}
+                        </div>
+                        <div className="mt-1 text-[11px] uppercase tracking-widest opacity-80">{kindLabel}</div>
+                        {c.note && <div className="mt-1 text-xs opacity-80">{c.note}</div>}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {toast && (
+                <div
+                  className={`rounded-lg px-3 py-2 text-xs border ${
+                    toast.kind === "ok"
+                      ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-200"
+                      : "bg-red-500/10 border-red-500/30 text-red-200"
+                  }`}
+                >
+                  {toast.msg}
+                </div>
+              )}
+            </div>
+          </motion.div>
+
+          {/* live deposit feed strip */}
+          <LiveFeed kind="deposit" take={8} title="Live Deposits" className="" />
+        </div>
+      )}
+
+      {/* === STEP 2 — channel-specific payment details === */}
+      {step === 2 && (() => {
+        const channels = config?.channels ?? [];
+        const selected = channels.find((c) => c.id === selectedChannelId) || null;
+        if (!selected) {
+          // Selection lost (e.g. admin disabled a channel mid-flow) — reset to step 1.
+          setStep(1);
+          return null;
+        }
+        let meta: Record<string, string> = {};
+        try { meta = selected.note ? {} : {}; if ((selected as any).metaJson) meta = JSON.parse((selected as any).metaJson) || {}; } catch { /* ignore */ }
+        const isUpi = selected.kind === "upi";
+        const isBank = selected.kind === "bank";
+        const isCrypto = selected.kind === "crypto";
+        return (
+          <div className="grid gap-4 lg:grid-cols-3">
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="lg:col-span-2 glass rounded-3xl p-6"
+            >
+              <div className="flex items-center justify-between">
+                <button
+                  onClick={() => { setStep(1); setUtr(""); setToast(null); }}
+                  className="inline-flex items-center gap-1 text-xs text-zinc-300 hover:text-yellow-200"
+                >
+                  <ArrowLeft size={14} /> Back
+                </button>
+                <span className="text-xs uppercase tracking-widest text-zinc-400">Step 2 of 2</span>
+              </div>
+
+              <div className="mt-3 flex items-center gap-2 text-white">
+                {isUpi && <QrCode size={18} className="text-yellow-300" />}
+                {isBank && <Banknote size={18} className="text-sky-300" />}
+                {isCrypto && <Bitcoin size={18} className="text-fuchsia-300" />}
+                <h3 className="font-semibold">{selected.label}</h3>
+                <span className="ml-auto text-sm text-zinc-300">Amount: <span className="gold-text font-semibold">{formatINR(amount)}</span></span>
+              </div>
+
+              {/* UPI — QR + ID */}
+              {isUpi && (
+                <div className="mt-4 grid sm:grid-cols-2 gap-4">
+                  <div className="rounded-2xl border border-yellow-500/20 bg-white p-4 flex items-center justify-center">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={upiQrUrl(selected, amount)} alt="UPI QR" width={220} height={220} className="rounded-lg" />
+                  </div>
+                  <div className="flex flex-col gap-2 text-sm text-zinc-200">
+                    <a
+                      href={upiPayLink(selected, amount)}
+                      className="text-center rounded-xl border border-yellow-500/30 px-3 py-2.5 font-semibold text-yellow-200 hover:bg-yellow-500/10 transition sm:hidden"
+                    >
+                      Open in UPI app
+                    </a>
+                    <div className="rounded-xl border border-yellow-500/20 bg-black/30 p-3">
+                      <div className="text-xs text-zinc-400">UPI ID</div>
+                      <button
+                        onClick={() => navigator?.clipboard?.writeText(selected.value).catch(() => {})}
+                        className="mt-1 inline-flex items-center gap-2 gold-text font-semibold hover:underline break-all"
+                      >
+                        {selected.value} <Copy size={12} />
+                      </button>
+                    </div>
+                    <div className="rounded-xl border border-yellow-500/20 bg-black/30 p-3">
+                      <div className="text-xs text-zinc-400">Payee</div>
+                      <div className="text-white">{selected.payeeName}</div>
+                    </div>
+                    {selected.note && (
+                      <div className="text-xs text-yellow-200/80">{selected.note}</div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Bank — account details */}
+              {isBank && (
+                <div className="mt-4 grid gap-2 text-sm">
+                  <div className="rounded-xl border border-sky-500/20 bg-black/30 p-3">
+                    <div className="text-xs text-zinc-400">Account Number</div>
+                    <button
+                      onClick={() => navigator?.clipboard?.writeText(selected.value).catch(() => {})}
+                      className="mt-1 inline-flex items-center gap-2 text-sky-200 font-semibold hover:underline"
+                    >
+                      {selected.value} <Copy size={12} />
                     </button>
                   </div>
-                  {selected.note && (
-                    <div className="text-xs text-yellow-200/80 text-center">{selected.note}</div>
-                  )}
-                  <div className="text-xs text-zinc-500 text-center">
-                    Scan with GPay / PhonePe / Paytm / BHIM, then copy the UTR from the success screen and paste it on the left.
+                  <div className="grid sm:grid-cols-2 gap-2">
+                    <div className="rounded-xl border border-sky-500/20 bg-black/30 p-3">
+                      <div className="text-xs text-zinc-400">Account Holder</div>
+                      <div className="text-white">{selected.payeeName || "—"}</div>
+                    </div>
+                    {meta.ifsc && (
+                      <div className="rounded-xl border border-sky-500/20 bg-black/30 p-3">
+                        <div className="text-xs text-zinc-400">IFSC</div>
+                        <button
+                          onClick={() => navigator?.clipboard?.writeText(meta.ifsc).catch(() => {})}
+                          className="mt-1 inline-flex items-center gap-2 text-sky-200 font-semibold hover:underline tracking-widest"
+                        >
+                          {meta.ifsc} <Copy size={12} />
+                        </button>
+                      </div>
+                    )}
+                    {meta.bank && (
+                      <div className="rounded-xl border border-sky-500/20 bg-black/30 p-3">
+                        <div className="text-xs text-zinc-400">Bank</div>
+                        <div className="text-white">{meta.bank}</div>
+                      </div>
+                    )}
+                    {meta.branch && (
+                      <div className="rounded-xl border border-sky-500/20 bg-black/30 p-3">
+                        <div className="text-xs text-zinc-400">Branch</div>
+                        <div className="text-white">{meta.branch}</div>
+                      </div>
+                    )}
                   </div>
+                  {selected.note && <div className="text-xs text-sky-200/80">{selected.note}</div>}
                 </div>
-              </>
-            );
-          })()}
-        </motion.div>
-      </div>
+              )}
+
+              {/* Crypto — wallet address */}
+              {isCrypto && (
+                <div className="mt-4 grid gap-2 text-sm">
+                  <div className="rounded-xl border border-fuchsia-500/20 bg-black/30 p-3">
+                    <div className="text-xs text-zinc-400">Wallet Address</div>
+                    <button
+                      onClick={() => navigator?.clipboard?.writeText(selected.value).catch(() => {})}
+                      className="mt-1 inline-flex items-center gap-2 text-fuchsia-200 font-semibold hover:underline break-all"
+                    >
+                      {selected.value} <Copy size={12} />
+                    </button>
+                  </div>
+                  {meta.network && (
+                    <div className="rounded-xl border border-fuchsia-500/20 bg-black/30 p-3">
+                      <div className="text-xs text-zinc-400">Network</div>
+                      <div className="text-white">{meta.network}</div>
+                    </div>
+                  )}
+                  {meta.coin && (
+                    <div className="rounded-xl border border-fuchsia-500/20 bg-black/30 p-3">
+                      <div className="text-xs text-zinc-400">Coin</div>
+                      <div className="text-white">{meta.coin}</div>
+                    </div>
+                  )}
+                  {selected.note && <div className="text-xs text-fuchsia-200/80">{selected.note}</div>}
+                </div>
+              )}
+
+              {/* UTR / TXID submission — always required for manual channels */}
+              <div className="mt-5 grid gap-3">
+                <label className="block">
+                  <div className="text-xs text-zinc-400 mb-1">
+                    {isCrypto ? "Transaction Hash (TxID)" : "UTR / Reference Number"}
+                  </div>
+                  <input
+                    value={utr}
+                    onChange={(e) => setUtr(e.target.value.slice(0, 64).toUpperCase())}
+                    placeholder={isCrypto ? "0x… transaction hash" : "12-digit UTR from your bank app"}
+                    className="w-full rounded-xl border border-yellow-500/20 bg-black/30 px-3 py-3 text-white focus:outline-none focus:border-yellow-500/50"
+                  />
+                </label>
+                <button
+                  onClick={submitManual}
+                  disabled={busy}
+                  className="rounded-xl bg-[var(--primary)] py-3 font-semibold text-black hover:brightness-95 disabled:opacity-60"
+                >
+                  {busy ? "Submitting…" : `Submit ${formatINR(amount)} deposit`}
+                </button>
+                {toast && (
+                  <div
+                    className={`rounded-lg px-3 py-2 text-xs border ${
+                      toast.kind === "ok"
+                        ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-200"
+                        : "bg-red-500/10 border-red-500/30 text-red-200"
+                    }`}
+                  >
+                    {toast.msg}
+                  </div>
+                )}
+              </div>
+            </motion.div>
+
+            <LiveFeed kind="deposit" take={8} title="Live Deposits" />
+          </div>
+        );
+      })()}
 
       {/* Deposit history */}
       <div className="glass rounded-3xl p-6">

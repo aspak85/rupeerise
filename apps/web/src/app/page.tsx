@@ -6,6 +6,7 @@ import Hero3D from "@/components/Hero3D";
 import PostersStrip from "@/components/PostersStrip";
 import TestimonialsMarquee from "@/components/TestimonialsMarquee";
 import PartnersMarquee from "@/components/PartnersMarquee";
+import LiveFeed from "@/components/LiveFeed";
 import Link from "next/link";
 async function getPlans() {
   const api = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
@@ -32,6 +33,9 @@ export default async function Home() {
     <>
     <SiteHeader />
     <main className="flex-1">
+      {/* Auto-swiping promotional carousel — admin manages slides via /admin/posters */}
+      <PostersStrip />
+
       {/* HERO with 3D tilt card */}
       <Hero3D />
 
@@ -68,21 +72,12 @@ export default async function Home() {
         </div>
       </section>
 
-      {/* Posters strip (3D feature cards) */}
-      <PostersStrip />
-
-      {/* Live withdrawal feed (simulated) */}
+      {/* Live withdrawal feed (driven by /feed/live, admin-manageable) */}
       <section className="px-6 pt-2">
         <div className="mx-auto max-w-6xl grid gap-4 lg:grid-cols-3">
           <Reveal>
-          <div className="glass rounded-2xl p-6 lg:col-span-2">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-white font-semibold">Live Withdrawal Feed</h3>
-              <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-widest rounded-full bg-emerald-500/15 text-emerald-300 px-2 py-1 border border-emerald-500/30">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Live
-              </span>
-            </div>
-            <LiveFeed />
+          <div className="lg:col-span-2">
+            <LiveFeed kind="all" take={10} title="Live Activity" />
           </div>
           </Reveal>
           <Reveal delay={0.05}>
@@ -239,23 +234,4 @@ function Counter({ to, prefix = "", suffix = "" }: { to: number; prefix?: string
   );
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function LiveFeed() {
-  const items = Array.from({ length: 10 }).map((_, i) => ({
-    name: ["Aarav", "Diya", "Kabir", "Isha", "Anaya", "Vihaan"][i % 6],
-    city: ["Delhi", "Mumbai", "Pune", "Surat", "Indore", "Bengaluru"][i % 6],
-    amount: Math.round(300 + Math.random() * 5000),
-    time: `${Math.round(1 + Math.random() * 50)}m ago`,
-  }));
-  return (
-    <ul className="divide-y divide-yellow-500/10">
-      {items.map((x, idx) => (
-        <li key={idx} className="py-2 flex items-center justify-between text-sm text-zinc-300">
-          <span>{x.name} • {x.city}</span>
-          <span className="gold-text font-semibold">₹{x.amount.toLocaleString("en-IN")}</span>
-          <span className="text-xs text-zinc-500">{x.time}</span>
-        </li>
-      ))}
-    </ul>
-  );
-}
+// (LiveFeed is now imported from "@/components/LiveFeed" — admin-managed)

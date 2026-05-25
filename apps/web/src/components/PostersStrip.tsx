@@ -1,90 +1,128 @@
 "use client";
-import { motion } from "framer-motion";
-import { Gift, Zap, Trophy, IndianRupee, Users, ShieldCheck } from "lucide-react";
+import { useEffect, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import Link from "next/link";
 
-const POSTERS = [
-  {
-    title: "Spin & Win Daily",
-    sub: "Spin the wheel every 24 hours and bag up to ₹100 free.",
-    grad: "from-yellow-500/30 via-amber-500/10 to-transparent",
-    icon: Zap,
-    chip: "🎡 Daily",
-  },
-  {
-    title: "Scratch Card Jackpot",
-    sub: "Reveal up to ₹200 instantly — pure luck, pure rewards.",
-    grad: "from-fuchsia-500/30 via-pink-500/10 to-transparent",
-    icon: Gift,
-    chip: "💎 Surprise",
-  },
-  {
-    title: "VIP Membership",
-    sub: "Bronze → Diamond: lower fees, bonus spin, faster payouts.",
-    grad: "from-sky-500/30 via-blue-500/10 to-transparent",
-    icon: Trophy,
-    chip: "👑 Tier",
-  },
-  {
-    title: "Multi-Level Referrals",
-    sub: "Earn 45% on first plan + 10/5/2% across 3 levels — auto credited.",
-    grad: "from-emerald-500/30 via-green-500/10 to-transparent",
-    icon: Users,
-    chip: "🤝 Team",
-  },
-  {
-    title: "Instant Razorpay",
-    sub: "Pay & receive within seconds. UPI, Cards, Wallets — all native INR.",
-    grad: "from-orange-500/30 via-red-500/10 to-transparent",
-    icon: IndianRupee,
-    chip: "⚡ Fast",
-  },
-  {
-    title: "Bank-grade Security",
-    sub: "256-bit SSL, KYC verification, signed payment receipts.",
-    grad: "from-rose-500/30 via-red-500/10 to-transparent",
-    icon: ShieldCheck,
-    chip: "🛡️ Safe",
-  },
-];
+type Poster = {
+  id: string;
+  title: string;
+  subtitle?: string | null;
+  imageUrl?: string | null;
+  gradient: string;
+  ctaHref?: string | null;
+  ctaLabel?: string | null;
+};
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "/api";
+
+/**
+ * Top-of-page promotional carousel. Auto-swipes every 5 seconds, pause on
+ * hover, dot indicators + arrow controls. Slides come from the admin-managed
+ * /posters endpoint so marketing copy can change without code deploys.
+ */
 export default function PostersStrip() {
+  const [posters, setPosters] = useState<Poster[]>([]);
+  const [index, setIndex] = useState(0);
+  const [hovered, setHovered] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await fetch(`${API_BASE}/posters`, { cache: "no-store" });
+        const data = await r.json();
+        if (Array.isArray(data?.posters) && data.posters.length) setPosters(data.posters);
+      } catch {
+        /* ignore — section just stays empty */
+      }
+    })();
+  }, []);
+
+  // Auto-swipe every 5s, paused while user hovers.
+  useEffect(() => {
+    if (hovered || posters.length < 2) return;
+    const id = setInterval(() => setIndex((i) => (i + 1) % posters.length), 5000);
+    return () => clearInterval(id);
+  }, [hovered, posters.length]);
+
+  if (!posters.length) return null;
+  const cur = posters[index] || posters[0];
+
   return (
-    <section className="px-6 py-12">
-      <div className="mx-auto max-w-6xl">
-        <div className="flex items-end justify-between flex-wrap gap-3 mb-6">
-          <div>
-            <div className="text-xs uppercase tracking-widest text-yellow-400/80">Why RupeeRise</div>
-            <h2 className="mt-1 text-2xl sm:text-3xl font-semibold text-white">Built for everyday earners.</h2>
-          </div>
-          <div className="text-sm text-zinc-400">No KYC for ₹500 plan • Withdraw weekly</div>
-        </div>
-
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {POSTERS.map((p, i) => (
+    <section className="px-4 sm:px-6 pt-4 pb-2">
+      <div
+        className="mx-auto max-w-6xl"
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+      >
+        <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-black/40 h-[180px] sm:h-[230px] md:h-[270px]">
+          <AnimatePresence mode="wait">
             <motion.div
-              key={p.title}
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: "-60px" }}
-              transition={{ delay: i * 0.05, duration: 0.45 }}
-              whileHover={{ y: -4, scale: 1.01 }}
-              className={`group relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br ${p.grad} p-6 h-full transition`}
+              key={cur.id}
+              initial={{ opacity: 0, scale: 1.02 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.98 }}
+              transition={{ duration: 0.6 }}
+              className="absolute inset-0"
             >
-              {/* Sheen */}
-              <div className="pointer-events-none absolute inset-0 opacity-0 group-hover:opacity-100 transition duration-500 bg-[linear-gradient(120deg,transparent_30%,rgba(255,255,255,0.06)_50%,transparent_70%)]" />
-
-              <div className="flex items-center justify-between">
-                <div className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-black/40 border border-white/10">
-                  <p.icon size={18} className="text-yellow-300" />
-                </div>
-                <div className="text-[10px] uppercase tracking-widest text-zinc-300 bg-black/40 rounded-full px-2 py-1 border border-white/10">
-                  {p.chip}
-                </div>
+              {cur.imageUrl ? (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  src={cur.imageUrl}
+                  alt={cur.title}
+                  className="absolute inset-0 h-full w-full object-cover"
+                />
+              ) : (
+                <div className={`absolute inset-0 bg-gradient-to-br ${cur.gradient}`} />
+              )}
+              {/* readability overlay */}
+              <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/40 to-black/10" />
+              <div className="relative z-10 flex h-full flex-col justify-center gap-2 p-6 sm:p-10 max-w-[80%]">
+                <h2 className="text-xl sm:text-3xl md:text-4xl font-bold text-white drop-shadow">
+                  {cur.title}
+                </h2>
+                {cur.subtitle && (
+                  <p className="text-zinc-200 text-sm sm:text-base max-w-xl drop-shadow">
+                    {cur.subtitle}
+                  </p>
+                )}
+                {cur.ctaHref && cur.ctaLabel && (
+                  cur.ctaHref.startsWith("http") ? (
+                    <a
+                      href={cur.ctaHref}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-2 inline-flex w-fit items-center rounded-xl bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-black shadow hover:brightness-95"
+                    >
+                      {cur.ctaLabel}
+                    </a>
+                  ) : (
+                    <Link
+                      href={cur.ctaHref}
+                      className="mt-2 inline-flex w-fit items-center rounded-xl bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-black shadow hover:brightness-95"
+                    >
+                      {cur.ctaLabel}
+                    </Link>
+                  )
+                )}
               </div>
-              <h3 className="mt-4 text-lg font-semibold text-white">{p.title}</h3>
-              <p className="mt-1 text-sm text-zinc-300/90 leading-relaxed">{p.sub}</p>
             </motion.div>
-          ))}
+          </AnimatePresence>
+
+          {/* dot indicators */}
+          {posters.length > 1 && (
+            <div className="absolute bottom-3 right-4 z-20 flex gap-1.5">
+              {posters.map((p, i) => (
+                <button
+                  key={p.id}
+                  aria-label={`Go to slide ${i + 1}`}
+                  onClick={() => setIndex(i)}
+                  className={`h-1.5 rounded-full transition-all ${
+                    i === index ? "w-6 bg-yellow-300" : "w-1.5 bg-white/40 hover:bg-white/70"
+                  }`}
+                />
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </section>

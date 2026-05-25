@@ -22,6 +22,9 @@ import supportRouter from './routes/support.js';
 import adminGiftCodesRouter from './routes/adminGiftCodes.js';
 import adminRewardsRouter from './routes/adminRewards.js';
 import adminSupportRouter from './routes/adminSupport.js';
+import postersRouter, { adminPostersRouter } from './routes/posters.js';
+import feedRouter, { adminFeedRouter } from './routes/feed.js';
+import adminSettingsRouter from './routes/adminSettings.js';
 import { ensurePlansSeeded } from './lib/plans.js';
 import { ensureChannelsSeeded } from './lib/paymentChannels.js';
 import { ensureAdminBootstrap } from './lib/adminBootstrap.js';
@@ -77,12 +80,17 @@ app.use('/withdrawals', withdrawalsRouter);
 app.use('/rewards', rewardsRouter);
 app.use('/redeem', giftCodesRouter); // POST /redeem and GET /redeem/history
 app.use('/support', supportRouter);  // GET /support/config
+app.use('/posters', postersRouter);  // GET /posters (public)
+app.use('/feed', feedRouter);        // GET /feed/live (public)
 
 // Admin only
 app.use('/admin/payment-channels', adminChannelsRouter);
 app.use('/admin/gift-codes', adminGiftCodesRouter);
 app.use('/admin/rewards', adminRewardsRouter);
 app.use('/admin/support', adminSupportRouter);
+app.use('/admin/posters', adminPostersRouter);
+app.use('/admin/feed', adminFeedRouter);
+app.use('/admin/settings', adminSettingsRouter);
 app.use('/admin/exports', exportsRouter);
 app.use('/admin', adminRouter);
 

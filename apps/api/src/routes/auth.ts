@@ -8,6 +8,8 @@ import { sendMail, otpEmail } from '../lib/mail';
 import { env } from '../lib/env';
 import { attachReferralEdges } from '../lib/referrals';
 import { requireAuth, AuthedRequest } from '../middleware/auth';
+import { readRegistrationBonus } from './adminSettings';
+import { postLedger } from '../lib/wallet';
 
 const router = Router();
 
@@ -247,6 +249,27 @@ router.post('/register', async (req, res) => {
     await ensureWallets(user.id);
     if (referredById) {
       try { await attachReferralEdges({ childId: user.id, directParentId: referredById }); } catch (e) { console.error('attachReferralEdges failed', e); }
+    }
+
+    // Welcome bonus — credited once per email at registration. The
+    // idempotency key (`signup-bonus:<userId>`) means the bonus can never be
+    // double-credited even if a registration request is replayed. Existing
+    // users that come in via legacy /verify-otp do NOT trigger this path, so
+    // each Gmail can claim the bonus exactly once across the platform.
+    try {
+      const bonus = await readRegistrationBonus();
+      if (bonus.enabled && bonus.amount > 0) {
+        await postLedger({
+          userId: user.id,
+          walletType: 'bonus',
+          amount: bonus.amount,
+          direction: 'credit',
+          reason: 'signup_bonus',
+          idempotencyKey: `signup-bonus:${user.id}`,
+        });
+      }
+    } catch (e) {
+      console.error('signup bonus credit failed', e);
     }
 
     // Auto-promote to admin if the email is in ADMIN_EMAILS.

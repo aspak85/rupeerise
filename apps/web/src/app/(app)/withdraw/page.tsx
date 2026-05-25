@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { ArrowDownToLine, Calendar, ShieldCheck } from "lucide-react";
 import { api, formatINR } from "@/lib/api";
+import LiveFeed from "@/components/LiveFeed";
 
 const FEE_PCT = 5;
 const MIN = 300;
@@ -95,7 +96,7 @@ export default function WithdrawPage() {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="lg:col-span-2 glass rounded-3xl p-6">
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="lg:col-span-2 glass rounded-3xl p-6" data-mark="withdraw-form">
           <div className="flex items-center gap-2 text-white">
             <ArrowDownToLine size={18} className="text-yellow-300" />
             <h3 className="font-semibold">New Withdrawal Request</h3>
@@ -211,6 +212,9 @@ export default function WithdrawPage() {
           </ul>
         </motion.div>
       </div>
+
+      {/* Live withdrawal feed strip — marketing-style social proof */}
+      <LiveFeed kind="withdraw" take={10} title="Live Withdrawals" />
 
       <div className="glass rounded-3xl p-6">
         <h3 className="text-white font-semibold">Withdrawal History</h3>

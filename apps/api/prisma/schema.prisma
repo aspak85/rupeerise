@@ -243,3 +243,46 @@ model GiftClaim {
   GiftCode    GiftCode @relation(fields: [giftCodeId], references: [id], onDelete: Cascade)
   @@unique([giftCodeId, userId])
 }
+
+/// Admin-managed promotional posters that auto-swipe at the top of the
+/// landing page. Each row is one slide; admins can add/edit/reorder/disable
+/// at any time without code changes.
+model Poster {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  /// Headline shown on the slide.
+  title     String
+  /// Subtitle / supporting line.
+  subtitle  String?
+  /// Public image URL (any CDN/Imgur/Cloudinary). When empty we render a
+  /// generated gradient backdrop.
+  imageUrl  String?
+  /// Tailwind gradient classes used when imageUrl is empty, e.g.
+  /// "from-yellow-500/30 via-amber-500/10 to-transparent".
+  gradient  String   @default("from-yellow-500/30 via-amber-500/10 to-transparent")
+  /// Optional CTA target — either an internal path (#plans, /login) or full URL.
+  ctaHref   String?
+  /// Optional CTA button label, e.g. "Claim now" or "View plans".
+  ctaLabel  String?
+  active    Boolean  @default(true)
+  sortOrder Int      @default(0)
+}
+
+/// Public-facing pseudo-live transaction feed shown on landing/deposit/
+/// withdraw pages. Admins can disable individual rows without deleting.
+/// We seed this with realistic Indian first-name + city combos so the page
+/// feels alive even on a brand-new install.
+model FeedEntry {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  /// "deposit" | "withdraw"
+  kind      String
+  /// Display name shown in the strip, e.g. "Aarav S."
+  username  String
+  /// City label, e.g. "Mumbai".
+  city      String?
+  amount    Int
+  active    Boolean  @default(true)
+  sortOrder Int      @default(0)
+}

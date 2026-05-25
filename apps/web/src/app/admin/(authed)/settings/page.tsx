@@ -1,9 +1,11 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { Mail, CreditCard, Check, X, AlertTriangle, Copy, Send, Settings as SettingsIcon, ExternalLink, ShieldCheck } from "lucide-react";
+import { Mail, CreditCard, Check, X, AlertTriangle, Copy, Send, Settings as SettingsIcon, ExternalLink, ShieldCheck, Gift } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+
+type RegistrationBonus = { enabled: boolean; amount: number };
 
 type SettingsStatus = {
   smtp: {
@@ -28,12 +30,38 @@ export default function AdminSettingsPage() {
   const [testTo, setTestTo] = useState("");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; msg: string } | null>(null);
+  const [bonus, setBonus] = useState<RegistrationBonus>({ enabled: true, amount: 100 });
+  const [bonusBusy, setBonusBusy] = useState(false);
+  const [bonusToast, setBonusToast] = useState<{ ok: boolean; msg: string } | null>(null);
 
   const load = useCallback(async () => {
     const r = await api<SettingsStatus>("/admin/settings/status");
     setStatus(r);
     if (!testTo && user?.email) setTestTo(user.email);
+    try {
+      const b = await api<{ bonus: RegistrationBonus }>("/admin/settings/registration-bonus");
+      setBonus(b.bonus);
+    } catch {
+      /* ignore — default kept */
+    }
   }, [testTo, user?.email]);
+
+  const saveBonus = async () => {
+    setBonusBusy(true);
+    setBonusToast(null);
+    try {
+      const r = await api<{ bonus: RegistrationBonus }>("/admin/settings/registration-bonus", {
+        method: "PUT",
+        body: JSON.stringify(bonus),
+      });
+      setBonus(r.bonus);
+      setBonusToast({ ok: true, msg: "Saved — new signups will use these settings." });
+    } catch (e: any) {
+      setBonusToast({ ok: false, msg: e?.message || "Save failed" });
+    } finally {
+      setBonusBusy(false);
+    }
+  };
 
   useEffect(() => { load(); }, [load]);
 
@@ -211,6 +239,54 @@ export default function AdminSettingsPage() {
             For real money, replace with live keys (<code className="text-yellow-300/80">rzp_live_*</code>) after KYC approval from Razorpay.
           </div>
         </div>
+      </motion.div>
+
+      {/* Registration bonus */}
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.075 }} className="glass rounded-3xl p-6">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-2 text-white">
+            <Gift size={18} className="text-yellow-300" />
+            <h3 className="font-semibold">Welcome bonus on signup</h3>
+          </div>
+          <StatusPill ok={!!bonus.enabled} okLabel={`Active — ₹${bonus.amount}`} failLabel="Disabled" />
+        </div>
+        <p className="mt-1 text-sm text-zinc-300">
+          Credited to a new user&rsquo;s <span className="text-yellow-200 font-medium">bonus wallet</span> the moment they finish signup with email + password + OTP. The same Gmail can never claim the bonus twice (idempotent at the ledger level).
+        </p>
+        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+          <label className="sm:col-span-2 block">
+            <div className="text-xs text-zinc-400 mb-1">Bonus amount (₹)</div>
+            <input
+              type="number"
+              value={bonus.amount}
+              onChange={(e) => setBonus({ ...bonus, amount: Math.max(0, Math.floor(Number(e.target.value) || 0)) })}
+              className="w-full rounded-xl border border-yellow-500/20 bg-black/30 px-3 py-3 text-white focus:outline-none focus:border-yellow-500/50"
+            />
+          </label>
+          <label className="block flex items-center gap-2 mt-6">
+            <input
+              type="checkbox"
+              checked={bonus.enabled}
+              onChange={(e) => setBonus({ ...bonus, enabled: e.target.checked })}
+              className="h-4 w-4"
+            />
+            <span className="text-sm text-zinc-200">Enabled</span>
+          </label>
+        </div>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button
+            onClick={saveBonus}
+            disabled={bonusBusy}
+            className="rounded-xl bg-[var(--primary)] px-4 py-2.5 font-semibold text-black hover:brightness-95 disabled:opacity-60"
+          >
+            {bonusBusy ? "Saving…" : "Save bonus settings"}
+          </button>
+        </div>
+        {bonusToast && (
+          <div className={`mt-3 rounded-lg px-3 py-2 text-xs border ${bonusToast.ok ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-200" : "bg-red-500/10 border-red-500/30 text-red-200"}`}>
+            {bonusToast.msg}
+          </div>
+        )}
       </motion.div>
 
       {/* Admins */}
