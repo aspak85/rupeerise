@@ -79,11 +79,66 @@ async function sendViaResend({ to, subject, text, html, from }: SendMailOpts & {
   return { delivered: true, preview: id };
 }
 
+/**
+ * Brevo (formerly Sendinblue) HTTP API. This is the most reliable path on
+ * Render free tier because:
+ *   1. It's HTTP (Render does not block outbound HTTPS to api.brevo.com).
+ *   2. Free tier (300 emails/day) only requires verifying a single sender
+ *      email, NOT a domain — so any Gmail user can be live in 5 min.
+ *   3. Unlike Resend's free tier, Brevo lets you send to arbitrary recipients
+ *      from day 1 without domain DNS setup.
+ */
+async function sendViaBrevo({ to, subject, text, html }: SendMailOpts) {
+  const apiKey = env.BREVO_API_KEY;
+  const senderEmail = env.BREVO_SENDER_EMAIL;
+  if (!apiKey || !senderEmail) return null; // not configured
+  console.log(`[mail/brevo] sending to=${to} from=${senderEmail}`);
+  const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: {
+      'api-key': apiKey,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    body: JSON.stringify({
+      sender: { email: senderEmail, name: env.BREVO_SENDER_NAME || 'RupeeRise' },
+      to: [{ email: to }],
+      subject,
+      textContent: text,
+      htmlContent: html || undefined,
+    }),
+  });
+  const bodyText = await res.text();
+  if (!res.ok) {
+    console.error(`[mail/brevo] failed status=${res.status} body=${bodyText}`);
+    throw new Error(`Brevo ${res.status}: ${bodyText}`);
+  }
+  let id: string | undefined;
+  try {
+    id = JSON.parse(bodyText)?.messageId;
+  } catch {
+    /* ignore */
+  }
+  console.log(`[mail/brevo] sent to=${to} id=${id ?? 'n/a'}`);
+  return { delivered: true, preview: id };
+}
+
 export async function sendMail({ to, subject, text, html }: SendMailOpts): Promise<{ delivered: boolean; preview?: string }> {
   const from = env.MAIL_FROM || 'RupeeRise <onboarding@resend.dev>';
 
-  // Preferred path: Resend HTTP API (works on Render where SMTP outbound is
-  // blocked). Falls through to SMTP only if RESEND_API_KEY is not set.
+  // Provider priority on Render: Brevo → Resend → SMTP.
+  // Brevo is preferred because its free tier works without domain verification,
+  // unlike Resend which restricts the free tier to the API owner's own email.
+  if (env.BREVO_API_KEY && env.BREVO_SENDER_EMAIL) {
+    try {
+      const r = await sendViaBrevo({ to, subject, text, html });
+      if (r) return r;
+    } catch (e: any) {
+      console.error(`[mail] brevo send failed: ${e?.message || e}`);
+      // fall through to other providers
+    }
+  }
+
   if (env.RESEND_API_KEY) {
     try {
       const r = await sendViaResend({ to, subject, text, html, from });

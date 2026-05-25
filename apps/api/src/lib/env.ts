@@ -20,9 +20,19 @@ export const env = {
   SMTP_USER: s(process.env.SMTP_USER),
   SMTP_PASS: s(process.env.SMTP_PASS),
   MAIL_FROM: s(process.env.MAIL_FROM),
-  // Resend HTTP API key (preferred over SMTP because Render blocks outbound
-  // SMTP ports 587/465). Sign up at resend.com — 100 free emails/day.
+  // Resend HTTP API key. NOTE: Resend's free tier in 'test mode' only lets
+  // you send to your own verified email — you must verify a custom domain
+  // before sending to arbitrary users. Use Brevo below if you don't have a
+  // domain handy.
   RESEND_API_KEY: s(process.env.RESEND_API_KEY),
+  // Brevo (formerly Sendinblue) HTTP API — BEST CHOICE for Render free tier
+  // because (a) it's HTTP (no SMTP outbound block), (b) the free 300/day
+  // tier only requires verifying a single sender email (no domain), so any
+  // Gmail user can be up and running in 5 minutes.
+  // Sign up: https://app.brevo.com/  -> SMTP & API -> API Keys
+  BREVO_API_KEY: s(process.env.BREVO_API_KEY),
+  BREVO_SENDER_EMAIL: s(process.env.BREVO_SENDER_EMAIL),
+  BREVO_SENDER_NAME: sd(process.env.BREVO_SENDER_NAME, 'RupeeRise'),
   ADMIN_EMAILS: sd(process.env.ADMIN_EMAILS, ''),
   // Plaintext admin password from .env. Hashed (bcrypt) into User.passwordHash
   // for each email in ADMIN_EMAILS on every API boot. Change the .env value
