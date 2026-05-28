@@ -2,7 +2,7 @@
   "id": "FEAT-001",
   "type": "fix",
   "description": "Fix Vercel deployment by re-enabling static export and making page.tsx compatible with it. This eliminates all serverless functions (solving the 12-function Hobby plan limit) while keeping the /api/* rewrite to Render working.",
-  "status": "in_progress",
+  "status": "completed",
   "steps": [
     "In apps/web/next.config.ts: Add `output: \"export\"` to the NextConfig object. Keep `images: { unoptimized: true }` as-is.",
     "In apps/web/src/app/page.tsx: Remove `export const revalidate = 300` (incompatible with static export). Remove the `async function getPlans()` server-side fetch. Change `export default async function Home()` to a non-async function that uses FALLBACK_PLANS directly for the initial render. Add a new client component (either inline or in a separate file) that fetches plans from the API on mount and passes them to PlansGrid. The simplest approach: create a wrapper component `PlansSection` that is 'use client', fetches plans client-side via useEffect, and renders PlansGrid. Import and use it in page.tsx instead of the current server-side fetch pattern.",
@@ -23,5 +23,5 @@
     "Verify no revalidate export remains: `grep -r 'revalidate' apps/web/src/app/page.tsx` should return nothing"
   ],
   "blocked_reason": null,
-  "findings": ""
+  "findings": "Build succeeds with Next.js 16.2.6 Turbopack. All 27 pages generated as static HTML. The Counter component using require('next/dynamic') with ssr:false works fine with static export. No issues with vercel.json rewrites config."
 }
