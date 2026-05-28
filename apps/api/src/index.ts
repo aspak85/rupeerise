@@ -57,7 +57,9 @@ app.use(
     credentials: true,
   })
 );
-app.use(express.json());
+// Increase JSON body limit to 10MB to support base64 poster images
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 
 app.get('/health', (_req, res) => {
