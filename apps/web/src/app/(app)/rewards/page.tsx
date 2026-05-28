@@ -31,9 +31,9 @@ export default function RewardsPage() {
   const [toast, setToast] = useState<{ kind: "spin" | "scratch"; amount: number } | null>(null);
 
   const load = useCallback(async () => {
-    // 3s budget for /rewards/status — UI is already mounted with DEFAULT_STATUS.
+    // 5s budget for /rewards/status — UI is already mounted with DEFAULT_STATUS.
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 3000);
+    const timer = setTimeout(() => ctrl.abort(), 5000);
     try {
       const token = getToken();
       const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -213,6 +213,7 @@ function SpinWheel({
           viewBox="0 0 300 300"
           animate={{ rotate: rotation }}
           transition={{ duration: 4, ease: [0.17, 0.67, 0.21, 0.99] }}
+          style={{ willChange: "transform" }}
           className="drop-shadow-[0_0_30px_rgba(255,215,0,0.25)]"
         >
           <circle cx={cx} cy={cy} r={radius + 6} fill="#0a0a0a" stroke="#FFD700" strokeWidth="2" />

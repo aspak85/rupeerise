@@ -1,0 +1,14 @@
+{
+  "task_id": "task-vercel-static-export-fix",
+  "task_description": "Fix Vercel deployment failure by re-enabling static export in Next.js config and making the homepage compatible with static export (remove server-side data fetching, use client-side fetch instead).",
+  "status": "completed",
+  "feature_order": ["FEAT-001"],
+  "blocked_reason": null,
+  "verification": {
+    "build": "pass",
+    "tests": "pass",
+    "test_quality": "skipped",
+    "docker_build": "skipped",
+    "summary": "Build succeeds with Next.js 16.2.6 Turbopack. All 27+ pages generated as static HTML in out/ directory. Zero serverless functions. No revalidate export remains. vercel.json rewrites intact for /api/* proxy to Render."
+  }
+}

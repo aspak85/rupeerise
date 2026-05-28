@@ -1,13 +1,17 @@
 import type { Metadata, Viewport } from "next";
 import { Poppins } from "next/font/google";
 import "./globals.css";
-import ParticlesBG from "@/components/ParticlesBG";
+import dynamic from "next/dynamic";
 import { AuthProvider } from "@/lib/auth";
+
+// Load particles lazily so it never blocks first paint
+const ParticlesBG = dynamic(() => import("@/components/ParticlesBG"));
 
 const poppins = Poppins({
   variable: "--font-poppins",
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+  weight: ["400", "600", "700"], // removed 500 - reduces font bundle
+  display: "swap", // show text immediately with fallback font
 });
 
 export const metadata: Metadata = {
