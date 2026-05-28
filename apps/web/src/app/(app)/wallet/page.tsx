@@ -119,9 +119,9 @@ export default function WalletPage() {
       // Pre-select the admin-marked default channel for the QR display.
       setSelectedChannelId((prev) => prev || cfg.defaultChannel?.id || cfg.channels[0]?.id || null);
     }
-    // Fetch deposit bonus config (non-blocking)
+    // Fetch deposit bonus config (non-blocking) — uses public endpoint
     try {
-      const bonus = await api<{ key: string; value: DepositBonusConfig }>("/admin/settings?key=deposit_config");
+      const bonus = await api<{ key: string; value: DepositBonusConfig }>("/settings/deposit_config");
       if (bonus?.value) setBonusConfig(bonus.value);
     } catch {
       /* ignore — no bonus message shown */

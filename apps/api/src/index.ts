@@ -25,6 +25,7 @@ import adminSupportRouter from './routes/adminSupport.js';
 import postersRouter, { adminPostersRouter } from './routes/posters.js';
 import feedRouter, { adminFeedRouter } from './routes/feed.js';
 import adminSettingsRouter from './routes/adminSettings.js';
+import notificationsRouter from './routes/notifications.js';
 import { ensurePlansSeeded } from './lib/plans.js';
 import { ensureChannelsSeeded } from './lib/paymentChannels.js';
 import { ensureAdminBootstrap } from './lib/adminBootstrap.js';
@@ -84,6 +85,22 @@ app.use('/redeem', giftCodesRouter); // POST /redeem and GET /redeem/history
 app.use('/support', supportRouter);  // GET /support/config
 app.use('/posters', postersRouter);  // GET /posters (public)
 app.use('/feed', feedRouter);        // GET /feed/live (public)
+app.use('/notifications', notificationsRouter);
+
+// Public settings (read-only, specific keys only)
+app.get('/settings/:key', async (req: any, res: any) => {
+  const ALLOWED_PUBLIC_KEYS = ['deposit_config'];
+  const key = String(req.params?.key || '').trim();
+  if (!ALLOWED_PUBLIC_KEYS.includes(key)) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const { prisma } = await import('./lib/prisma.js');
+    const row = await prisma.appSetting.findUnique({ where: { key } });
+    if (!row) return res.json({ key, value: null });
+    let value: any = row.value;
+    try { value = JSON.parse(row.value); } catch {}
+    return res.json({ key, value });
+  } catch { return res.json({ key, value: null }); }
+});
 
 // Admin only
 app.use('/admin/payment-channels', adminChannelsRouter);

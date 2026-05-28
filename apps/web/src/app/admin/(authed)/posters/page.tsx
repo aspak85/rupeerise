@@ -241,13 +241,45 @@ export default function AdminPostersPage() {
         <div className="grid sm:grid-cols-2 gap-3">
           <label className="block">
             <div className="text-xs text-zinc-400 mb-1">Title <span className="text-red-400">*</span></div>
-            <input value={draft.title || ""} onChange={(e) => setDraft({ ...draft, title: e.target.value })}
-              className={inp} placeholder="Diwali Bonus ₹500 Free!" />
+            <input
+              value={draft.title || ""}
+              onChange={(e) => setDraft({ ...draft, title: e.target.value })}
+              list="title-suggestions"
+              className={inp}
+              placeholder="Type or choose a title..."
+            />
+            <datalist id="title-suggestions">
+              <option value="Welcome Bonus ₹100 Free! 🎁" />
+              <option value="Earn Daily. Withdraw Weekly. 💸" />
+              <option value="Diwali Special Offer! 🪔" />
+              <option value="New Year Bonus Unlocked! 🎊" />
+              <option value="Refer & Earn 45% Commission 🤝" />
+              <option value="Plans Starting from ₹500 Only 📈" />
+              <option value="Today Only: Double Rewards! ⚡" />
+              <option value="Weekend Special Offer 🎯" />
+              <option value="VIP Members Get Extra 10% 👑" />
+              <option value="Limited Time: Zero Fee Withdrawal 🔥" />
+            </datalist>
           </label>
           <label className="block">
             <div className="text-xs text-zinc-400 mb-1">Subtitle</div>
-            <input value={draft.subtitle || ""} onChange={(e) => setDraft({ ...draft, subtitle: e.target.value })}
-              className={inp} placeholder="Sign up aaj aur ₹500 bonus pao." />
+            <input
+              value={draft.subtitle || ""}
+              onChange={(e) => setDraft({ ...draft, subtitle: e.target.value })}
+              list="subtitle-suggestions"
+              className={inp}
+              placeholder="Type or choose a subtitle..."
+            />
+            <datalist id="subtitle-suggestions">
+              <option value="Sign up today and get ₹100 instantly credited to your bonus wallet!" />
+              <option value="Buy any plan and claim daily income every 24 hours." />
+              <option value="Festival season brings extra rewards for all investors!" />
+              <option value="Invite friends and earn 45% on their first plan purchase." />
+              <option value="Plans from ₹500 to ₹1,00,000 — pick your earning tier." />
+              <option value="Limited time offer — act now before it expires!" />
+              <option value="VIP members enjoy exclusive rewards and priority support." />
+              <option value="Weekly withdrawals every Sunday — fast and hassle-free." />
+            </datalist>
           </label>
         </div>
 

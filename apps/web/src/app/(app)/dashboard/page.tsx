@@ -1,8 +1,8 @@
 "use client";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { motion } from "framer-motion";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
-  Coins, Sparkles, Users2, Wallet, BadgeIndianRupee, TrendingUp, Trophy,
+  Bell, Coins, Sparkles, Users2, Wallet, BadgeIndianRupee, TrendingUp, Trophy,
   Gift, Zap, Flame, ShieldCheck, Award, Rocket, Star, Lock, ArrowDownToLine,
 } from "lucide-react";
 import Link from "next/link";
@@ -26,9 +26,6 @@ type ClaimStatus = {
 type RewardsStatus = {
   dayKey: string;
   msUntilNext: number;
-  // The full status from /rewards/status now includes admin enable flags +
-  // dynamic prize tables; the dashboard only reads claimedAmount/available
-  // so the extra fields are tolerated.
   spin: { enabled?: boolean; available: boolean; claimedAmount: number; prizes?: number[] };
   scratch: { enabled?: boolean; available: boolean; claimedAmount: number; maxPrize?: number };
 };
@@ -43,29 +40,79 @@ type Investment = {
   startedAt: string;
   endsAt: string;
 };
+type Notification = {
+  id: string;
+  title: string;
+  body: string;
+  read: boolean;
+  createdAt: string;
+};
 
 export default function DashboardPage() {
   const { user } = useAuth();
   const [me, setMe] = useState<MeRes | null>(null);
   const [claim, setClaim] = useState<ClaimStatus | null>(null);
+  const [claimLoading, setClaimLoading] = useState(true);
   const [rewards, setRewards] = useState<RewardsStatus | null>(null);
   const [investments, setInvestments] = useState<Investment[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
+  // Notifications state
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const notifRef = useRef<HTMLDivElement>(null);
+
+  const unreadCount = notifications.filter((n) => !n.read).length;
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
+        setNotifOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const markAllRead = async () => {
+    try {
+      await api("/notifications/read-all", { method: "PATCH" });
+      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    } catch {}
+  };
+
+  const markOneRead = async (id: string) => {
+    try {
+      await api(`/notifications/${id}/read`, { method: "PATCH" });
+      setNotifications((prev) => prev.map((n) => n.id === id ? { ...n, read: true } : n));
+    } catch {}
+  };
+
+  const openNotifications = () => {
+    setNotifOpen((prev) => !prev);
+    if (!notifOpen && unreadCount > 0) {
+      markAllRead();
+    }
+  };
+
   const load = useCallback(async () => {
-    const [mRes, cRes, rRes, invRes] = await Promise.allSettled([
+    const [mRes, cRes, rRes, invRes, notifRes] = await Promise.allSettled([
       api<MeRes>("/me"),
       api<ClaimStatus>("/claims/status"),
       api<RewardsStatus>("/rewards/status"),
       api<{ investments: Investment[] }>("/investments"),
+      api<{ notifications: Notification[] }>("/notifications"),
     ]);
     if (mRes.status === "fulfilled") setMe(mRes.value);
     if (cRes.status === "fulfilled") setClaim(cRes.value);
     if (rRes.status === "fulfilled") setRewards(rRes.value);
     if (invRes.status === "fulfilled") setInvestments(invRes.value.investments);
+    if (notifRes.status === "fulfilled") setNotifications(notifRes.value.notifications);
     setLoading(false);
+    setClaimLoading(false);
   }, []);
 
   useEffect(() => {
@@ -109,7 +156,13 @@ export default function DashboardPage() {
       if (r.alreadyClaimed) setToast("Already claimed today.");
       else if (r.noPlans) setToast("No active plan to claim from. Buy a plan first!");
       else setToast(`+${formatINR(r.amount)} credited to Earnings Wallet`);
-      await load();
+      // Only reload the two endpoints that change after a claim
+      const [cRes, mRes] = await Promise.allSettled([
+        api<ClaimStatus>("/claims/status"),
+        api<MeRes>("/me"),
+      ]);
+      if (cRes.status === "fulfilled") setClaim(cRes.value);
+      if (mRes.status === "fulfilled") setMe(mRes.value);
     } catch (e: any) {
       setToast(e?.message || "Claim failed");
     } finally {
@@ -129,10 +182,73 @@ export default function DashboardPage() {
             {me?.user.name || me?.user.email || user?.email}
           </h1>
         </div>
-        <div className="flex items-center gap-2 rounded-xl glass px-4 py-2 text-sm">
-          <Trophy size={16} className="text-yellow-400" />
-          <span className="text-zinc-300">VIP Level</span>
-          <span className="font-semibold text-yellow-300">Bronze</span>
+        <div className="flex items-center gap-3">
+          {/* Notification bell */}
+          <div className="relative" ref={notifRef}>
+            <button
+              onClick={openNotifications}
+              className="relative flex items-center justify-center w-10 h-10 rounded-xl glass border border-yellow-500/20 hover:border-yellow-500/40 transition"
+              aria-label="Notifications"
+            >
+              <Bell size={18} className="text-yellow-300" />
+              {unreadCount > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
+                  {unreadCount > 9 ? "9+" : unreadCount}
+                </span>
+              )}
+            </button>
+
+            <AnimatePresence>
+              {notifOpen && (
+                <motion.div
+                  initial={{ opacity: 0, y: -8, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -8, scale: 0.95 }}
+                  transition={{ duration: 0.15 }}
+                  className="absolute right-0 top-12 z-50 w-80 glass rounded-2xl border border-yellow-500/20 shadow-2xl shadow-black/40 overflow-hidden"
+                >
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-yellow-500/10">
+                    <span className="text-white font-semibold text-sm">Notifications</span>
+                    {unreadCount > 0 && (
+                      <button onClick={markAllRead} className="text-[11px] text-yellow-300 hover:underline">
+                        Mark all read
+                      </button>
+                    )}
+                  </div>
+                  <div className="max-h-80 overflow-y-auto divide-y divide-yellow-500/10">
+                    {notifications.length === 0 ? (
+                      <div className="px-4 py-6 text-center text-sm text-zinc-400">No notifications yet</div>
+                    ) : (
+                      notifications.map((n) => (
+                        <button
+                          key={n.id}
+                          onClick={() => markOneRead(n.id)}
+                          className={`w-full text-left px-4 py-3 hover:bg-yellow-500/5 transition ${!n.read ? "bg-yellow-500/5" : ""}`}
+                        >
+                          <div className="flex items-start gap-2">
+                            {!n.read && <span className="mt-1.5 w-2 h-2 rounded-full bg-yellow-400 flex-shrink-0" />}
+                            <div className={!n.read ? "" : "ml-4"}>
+                              <div className="text-white text-xs font-semibold">{n.title}</div>
+                              <div className="text-zinc-400 text-xs mt-0.5 leading-snug">{n.body}</div>
+                              <div className="text-zinc-600 text-[10px] mt-1">
+                                {new Date(n.createdAt).toLocaleString("en-IN")}
+                              </div>
+                            </div>
+                          </div>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          <div className="flex items-center gap-2 rounded-xl glass px-4 py-2 text-sm">
+            <Trophy size={16} className="text-yellow-400" />
+            <span className="text-zinc-300">VIP Level</span>
+            <span className="font-semibold text-yellow-300">Bronze</span>
+          </div>
         </div>
       </div>
 
@@ -175,7 +291,7 @@ export default function DashboardPage() {
             <Coins size={14} /> Daily Reward
           </div>
           <div className="mt-2 text-zinc-300 text-sm">
-            {loading && !claim
+            {claimLoading
               ? "Checking reward status…"
               : claim?.claimedToday
                 ? "You've claimed today's reward."
@@ -183,16 +299,16 @@ export default function DashboardPage() {
                   ? "Today's reward is ready to claim."
                   : "Buy a plan to start daily rewards."}
           </div>
-          <div className={`mt-5 text-4xl font-bold gold-text ${loading && !claim ? "animate-pulse" : ""}`}>
+          <div className={`mt-5 text-4xl font-bold gold-text ${claimLoading ? "animate-pulse" : ""}`}>
             +{formatINR(claim?.pendingAmount || claim?.todayAmount || dailyIncome)}
           </div>
           {/* Claim button shown immediately; enabled/disabled once API responds */}
           <button
             onClick={onClaim}
-            disabled={busy || loading || !!claim?.claimedToday || !claim?.pendingAmount}
+            disabled={busy || claimLoading || !!claim?.claimedToday || !claim?.pendingAmount}
             className="mt-5 w-full rounded-xl bg-[var(--primary)] py-3 font-semibold text-black hover:brightness-95 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {busy ? "Claiming…" : loading && !claim ? "Loading…" : claim?.claimedToday ? `Next claim in ${countdown}` : "Claim Now"}
+            {busy ? "Claiming…" : claimLoading ? "Loading…" : claim?.claimedToday ? `Next claim in ${countdown}` : "Claim Now"}
           </button>
           {toast && <div className="mt-3 text-xs text-yellow-200 bg-yellow-500/10 border border-yellow-500/30 rounded-lg px-3 py-2">{toast}</div>}
         </motion.div>
