@@ -10,7 +10,6 @@ import {
   Gift,
   ShieldCheck,
   KeyRound,
-  Sparkles,
   HelpCircle,
   User,
   Lock,
@@ -65,7 +64,6 @@ function LoginContent() {
 
   // OTP step (signup + forgot)
   const [code, setCode] = useState("");
-  const [devOtp, setDevOtp] = useState<string | null>(null);
 
   // Auto-redirect once authenticated
   useEffect(() => {
@@ -93,7 +91,6 @@ function LoginContent() {
     setError(null);
     setInfo(null);
     setCode("");
-    setDevOtp(null);
     setSignupStep("form");
     setForgotStep("email");
     setPassword("");
@@ -135,13 +132,12 @@ function LoginContent() {
   const sendOtpForLegacyMigration = async () => {
     setBusy(true);
     try {
-      const r = await api<{ delivered: boolean; devOtp?: string }>("/auth/request-otp", {
+      await api<{ delivered: boolean }>("/auth/request-otp", {
         method: "POST",
         body: JSON.stringify({ email }),
       });
       setMode("signup");
       setSignupStep("otp");
-      if (r.devOtp) setDevOtp(r.devOtp);
       setInfo(`OTP sent to ${email}. Enter it below and we'll get you set up with a password.`);
     } catch (e: any) {
       setError(e?.message || "Failed to send OTP");
@@ -159,13 +155,12 @@ function LoginContent() {
     setError(null);
     setBusy(true);
     try {
-      const r = await api<{ delivered: boolean; devOtp?: string }>("/auth/request-otp", {
+      await api<{ delivered: boolean }>("/auth/request-otp", {
         method: "POST",
         body: JSON.stringify({ email }),
       });
       setSignupStep("otp");
-      setDevOtp(r.devOtp || null);
-      setInfo(r.devOtp ? "Dev mode: your OTP is shown below." : `OTP sent to ${email}. Check your inbox.`);
+      setInfo(`OTP sent to ${email}. Check your inbox.`);
     } catch (e: any) {
       setError(e?.message || "Failed to send OTP");
     } finally {
@@ -224,12 +219,11 @@ function LoginContent() {
     setError(null);
     setBusy(true);
     try {
-      const r = await api<{ delivered?: boolean; devOtp?: string; message: string }>(
+      const r = await api<{ delivered?: boolean; message: string }>(
         "/auth/forgot-password",
         { method: "POST", body: JSON.stringify({ email }) }
       );
       setForgotStep("reset");
-      setDevOtp(r.devOtp || null);
       setInfo(r.message || "If an account exists, an OTP has been sent.");
     } catch (e: any) {
       setError(e?.message || "Could not send reset OTP");
@@ -458,8 +452,6 @@ function LoginContent() {
                   We sent a 6-digit code to <span className="gold-text font-medium">{email}</span>
                 </div>
 
-                {devOtp && <DevOtpCard code={devOtp} onTap={() => setCode(devOtp)} />}
-
                 <OtpInput value={code} onChange={setCode} />
 
                 <button
@@ -524,7 +516,6 @@ function LoginContent() {
                   Code sent to <span className="gold-text font-medium">{email}</span>
                 </div>
 
-                {devOtp && <DevOtpCard code={devOtp} onTap={() => setCode(devOtp)} />}
                 <OtpInput value={code} onChange={setCode} />
 
                 <PasswordField
@@ -682,28 +673,3 @@ function OtpInput({ value, onChange }: { value: string; onChange: (v: string) =>
   );
 }
 
-function DevOtpCard({ code, onTap }: { code: string; onTap: () => void }) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ opacity: 1, scale: 1 }}
-      className="rounded-xl border border-yellow-500/40 bg-gradient-to-br from-yellow-500/10 to-yellow-500/0 p-4"
-    >
-      <div className="flex items-center gap-2 text-yellow-300 text-[10px] uppercase tracking-widest">
-        <Sparkles size={12} /> Dev Mode — Your OTP
-      </div>
-      <button
-        type="button"
-        onClick={() => {
-          onTap();
-          navigator.clipboard?.writeText(code).catch(() => {});
-        }}
-        className="mt-1 w-full text-center font-mono text-3xl font-bold gold-text tracking-[0.5em] hover:scale-[1.02] transition"
-        title="Tap to autofill"
-      >
-        {code}
-      </button>
-      <div className="mt-1 text-[10px] text-zinc-400 text-center">Tap the code to autofill below.</div>
-    </motion.div>
-  );
-}
