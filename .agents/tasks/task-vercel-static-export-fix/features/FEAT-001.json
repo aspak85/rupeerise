@@ -1,0 +1,27 @@
+{
+  "id": "FEAT-001",
+  "type": "fix",
+  "description": "Fix Vercel deployment by re-enabling static export and making page.tsx compatible with it. This eliminates all serverless functions (solving the 12-function Hobby plan limit) while keeping the /api/* rewrite to Render working.",
+  "status": "in_progress",
+  "steps": [
+    "In apps/web/next.config.ts: Add `output: \"export\"` to the NextConfig object. Keep `images: { unoptimized: true }` as-is.",
+    "In apps/web/src/app/page.tsx: Remove `export const revalidate = 300` (incompatible with static export). Remove the `async function getPlans()` server-side fetch. Change `export default async function Home()` to a non-async function that uses FALLBACK_PLANS directly for the initial render. Add a new client component (either inline or in a separate file) that fetches plans from the API on mount and passes them to PlansGrid. The simplest approach: create a wrapper component `PlansSection` that is 'use client', fetches plans client-side via useEffect, and renders PlansGrid. Import and use it in page.tsx instead of the current server-side fetch pattern.",
+    "In apps/web/vercel.json: Ensure the rewrites configuration is correct for static export. The current config with source /api/:path* destination https://rupeerise-api.onrender.com/:path* should work with static sites on Vercel. No changes needed unless the build fails.",
+    "Run `npm install` in apps/web, then run `npx next build` in apps/web to verify the build succeeds and produces an `out/` directory.",
+    "Commit all changes with a descriptive message about fixing the Vercel deployment."
+  ],
+  "acceptance_criteria": [
+    "apps/web/next.config.ts contains output: 'export'",
+    "apps/web/src/app/page.tsx has no `export const revalidate` and no server-side async fetch",
+    "Running `npx next build` in apps/web succeeds without errors",
+    "The build produces an `out/` directory with static HTML files",
+    "Plans are still displayed on the homepage (fetched client-side with fallback data for SSG)"
+  ],
+  "verification": [
+    "Run `npm install && npx next build` in apps/web directory - should complete successfully",
+    "Verify out/ directory exists after build: `ls apps/web/out/index.html`",
+    "Verify no revalidate export remains: `grep -r 'revalidate' apps/web/src/app/page.tsx` should return nothing"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}
