@@ -47,25 +47,30 @@ router.get('/status', requireAuth, async (req: AuthedRequest, res) => {
   try {
     const userId = req.user!.sub;
     const dayKey = todayKeyIST();
-    const [spin, scratch, cfg] = await Promise.all([
+    const [spin, scratch, cfg, activePlans] = await Promise.all([
       prisma.dailyReward.findUnique({ where: { userId_type_dayKey: { userId, type: 'spin', dayKey } } }),
       prisma.dailyReward.findUnique({ where: { userId_type_dayKey: { userId, type: 'scratch', dayKey } } }),
       getRewardConfig(),
+      prisma.investment.count({ where: { userId, status: 'active' } }),
     ]);
+    const hasPlan = activePlans > 0;
     return res.json({
       dayKey,
       msUntilNext: msUntilNextISTMidnight(),
+      hasPlan,
       spin: {
-        enabled: cfg.spin.enabled,
-        available: cfg.spin.enabled && !spin,
+        enabled: cfg.spin.enabled && hasPlan,
+        available: cfg.spin.enabled && hasPlan && !spin,
         claimedAmount: spin ? Number(spin.amount) : 0,
         prizes: cfg.spin.prizes,
+        lockedReason: !hasPlan ? 'Plan kharido tab spin karo!' : null,
       },
       scratch: {
-        enabled: cfg.scratch.enabled,
-        available: cfg.scratch.enabled && !scratch,
+        enabled: cfg.scratch.enabled && hasPlan,
+        available: cfg.scratch.enabled && hasPlan && !scratch,
         claimedAmount: scratch ? Number(scratch.amount) : 0,
         maxPrize: Math.max(...cfg.scratch.table.map((r) => r.amount)),
+        lockedReason: !hasPlan ? 'Plan kharido tab scratch karo!' : null,
       },
     });
   } catch (e) {
@@ -79,6 +84,11 @@ router.post('/spin', requireAuth, async (req: AuthedRequest, res) => {
   const userId = req.user!.sub;
   const dayKey = todayKeyIST();
   try {
+    // Must have at least one investment to use rewards
+    const hasInvestment = await prisma.investment.count({ where: { userId, status: 'active' } });
+    if (!hasInvestment) {
+      return res.status(403).json({ error: 'Pehle ek plan kharido tab spin wheel available hoga!' });
+    }
     const cfg = await getRewardConfig();
     if (!cfg.spin.enabled) return res.status(403).json({ error: 'Spin wheel is currently disabled' });
     const prize = await pickSpinPrize();
@@ -122,6 +132,11 @@ router.post('/scratch', requireAuth, async (req: AuthedRequest, res) => {
   const userId = req.user!.sub;
   const dayKey = todayKeyIST();
   try {
+    // Must have at least one investment to use rewards
+    const hasInvestment = await prisma.investment.count({ where: { userId, status: 'active' } });
+    if (!hasInvestment) {
+      return res.status(403).json({ error: 'Pehle ek plan kharido tab scratch card available hoga!' });
+    }
     const cfg = await getRewardConfig();
     if (!cfg.scratch.enabled) return res.status(403).json({ error: 'Scratch card is currently disabled' });
     const amount = await pickScratchPrize();

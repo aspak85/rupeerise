@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { prisma } from '../lib/prisma';
 import { requireAuth, AuthedRequest } from '../middleware/auth';
 import { postLedger } from '../lib/wallet';
-import { isSundayIST } from '../lib/time';
+import { isWithdrawalDayIST } from '../lib/time';
 
 const router = Router();
 
@@ -42,8 +42,8 @@ router.post('/', requireAuth, async (req: AuthedRequest, res) => {
   const method = String(req.body?.method || 'upi'); // upi|bank
   const account = req.body?.account ?? {};
 
-  if (!isSundayIST()) {
-    return res.status(400).json({ error: 'Withdrawals are only allowed on Sundays (IST)' });
+  if (!isWithdrawalDayIST()) {
+    return res.status(400).json({ error: 'Withdrawals are only allowed on Sundays and Tuesdays (IST)' });
   }
   if (!Number.isFinite(amount) || amount < MIN_AMOUNT) {
     return res.status(400).json({ error: `Minimum withdrawal is ₹${MIN_AMOUNT}` });

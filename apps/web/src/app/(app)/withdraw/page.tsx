@@ -31,9 +31,10 @@ export default function WithdrawPage() {
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<{ kind: "ok" | "err"; msg: string } | null>(null);
 
-  // Sunday-only window check (IST) — computed immediately without waiting for API
+  // Sunday + Tuesday window check (IST) — computed immediately without waiting for API
   const istDay = new Date(Date.now() + 5.5 * 60 * 60 * 1000).getUTCDay();
-  const isSunday = istDay === 0;
+  const isWithdrawalDay = istDay === 0 || istDay === 2; // 0=Sunday, 2=Tuesday
+  const nextWithdrawalDay = istDay === 0 || istDay === 2 ? "Today" : istDay < 2 ? "Tuesday" : "Sunday";
 
   const load = useCallback(async () => {
     const [meRes, wdRes] = await Promise.allSettled([
@@ -58,7 +59,7 @@ export default function WithdrawPage() {
     setToast(null);
     if (amount < MIN) return setToast({ kind: "err", msg: `Minimum withdrawal is ${formatINR(MIN)}` });
     if (amount > withdrawable) return setToast({ kind: "err", msg: "Amount exceeds withdrawable balance" });
-    if (!isSunday) return setToast({ kind: "err", msg: "Withdrawals are only allowed on Sundays (IST)" });
+    if (!isWithdrawalDay) return setToast({ kind: "err", msg: "Withdrawals are only allowed on Sundays and Tuesdays (IST)" });
 
     const account = method === "upi"
       ? { upi: upiId.trim() }
@@ -89,13 +90,13 @@ export default function WithdrawPage() {
           <div className="text-xs uppercase tracking-widest text-yellow-400/80">Withdraw</div>
           <h1 className="text-2xl sm:text-3xl font-semibold text-white mt-1">Cash out earnings</h1>
           <p className="mt-1 text-sm text-zinc-300">
-            Withdrawals are processed weekly on <span className="gold-text font-semibold">Sunday (IST)</span> with a {FEE_PCT}% fee. Min {formatINR(MIN)}.
+            Withdrawals are processed on <span className="gold-text font-semibold">Sunday & Tuesday (IST)</span> with a {FEE_PCT}% fee. Min {formatINR(MIN)}.
           </p>
         </div>
-        {/* Sunday window badge — shown immediately from local clock */}
-        <div className={`rounded-xl px-4 py-2 text-xs border flex items-center gap-2 ${isSunday ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-200" : "bg-zinc-800/50 border-yellow-500/20 text-zinc-300"}`}>
+        {/* Withdrawal window badge — shown immediately from local clock */}
+        <div className={`rounded-xl px-4 py-2 text-xs border flex items-center gap-2 ${isWithdrawalDay ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-200" : "bg-zinc-800/50 border-yellow-500/20 text-zinc-300"}`}>
           <Calendar size={14} />
-          {isSunday ? "Withdrawal window: OPEN" : "Withdrawal window: opens Sunday IST"}
+          {isWithdrawalDay ? "Withdrawal window: OPEN 🟢" : `Next withdrawal: ${nextWithdrawalDay}`}
         </div>
       </div>
 
@@ -211,10 +212,10 @@ export default function WithdrawPage() {
 
               <button
                 onClick={submit}
-                disabled={busy || !isSunday}
+                disabled={busy || !isWithdrawalDay}
                 className="rounded-xl bg-[var(--primary)] py-3 font-semibold text-black hover:brightness-95 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {!isSunday ? "Window closed (opens Sunday)" : busy ? "Submitting…" : "Submit Withdrawal"}
+                {!isWithdrawalDay ? `Window closed (next: ${nextWithdrawalDay})` : busy ? "Submitting…" : "Submit Withdrawal"}
               </button>
 
               {toast && (
@@ -231,7 +232,7 @@ export default function WithdrawPage() {
               <h3 className="font-semibold">Rules</h3>
             </div>
             <ul className="mt-3 space-y-2 text-sm text-zinc-300 list-disc pl-4">
-              <li>Sunday-only withdrawal window (IST).</li>
+              <li>Sunday & Tuesday withdrawal windows (IST).</li>
               <li>Minimum withdrawal: <span className="text-white">{formatINR(MIN)}</span>.</li>
               <li>{FEE_PCT}% platform fee deducted at request.</li>
               <li>Approved payouts settle to UPI within 24h, bank within 48h.</li>

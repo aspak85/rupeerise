@@ -7,6 +7,9 @@ import { AuthProvider } from "@/lib/auth";
 // Load particles lazily so it never blocks first paint
 const ParticlesBG = dynamic(() => import("@/components/ParticlesBG"));
 
+// Warm up Render API as early as possible — import side-effect triggers warmup
+import "@/lib/warmup";
+
 const poppins = Poppins({
   variable: "--font-poppins",
   subsets: ["latin"],

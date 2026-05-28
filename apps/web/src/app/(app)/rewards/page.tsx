@@ -10,20 +10,23 @@ function segColor(i: number) { return i % 2 === 0 ? "#FFD700" : "#0F172A"; }
 type Status = {
   dayKey: string;
   msUntilNext: number;
-  spin: { enabled: boolean; available: boolean; claimedAmount: number; prizes: number[] };
-  scratch: { enabled: boolean; available: boolean; claimedAmount: number; maxPrize: number };
+  hasPlan?: boolean;
+  spin: { enabled: boolean; available: boolean; claimedAmount: number; prizes: number[]; lockedReason?: string | null };
+  scratch: { enabled: boolean; available: boolean; claimedAmount: number; maxPrize: number; lockedReason?: string | null };
 };
 
 /**
  * Optimistic default state — shown instantly on first render so the spin wheel
  * and scratch card are interactive before /rewards/status responds. If the API
  * later says the user already claimed today, we swap in the real numbers.
+ * hasPlan: false by default — will be corrected when API responds.
  */
 const DEFAULT_STATUS: Status = {
   dayKey: "",
   msUntilNext: 0,
-  spin: { enabled: true, available: true, claimedAmount: 0, prizes: [5, 10, 15, 20, 25, 35, 50, 100] },
-  scratch: { enabled: true, available: true, claimedAmount: 0, maxPrize: 200 },
+  hasPlan: false,
+  spin: { enabled: false, available: false, claimedAmount: 0, prizes: [5, 10, 15, 20, 25, 35, 50, 100], lockedReason: "Plan kharido tab spin karo!" },
+  scratch: { enabled: false, available: false, claimedAmount: 0, maxPrize: 200, lockedReason: "Plan kharido tab scratch karo!" },
 };
 
 export default function RewardsPage() {
@@ -70,6 +73,17 @@ export default function RewardsPage() {
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
+        {/* Show locked state if no plan */}
+        {!status.hasPlan && status.spin.lockedReason && (
+          <div className="md:col-span-2 glass rounded-2xl p-8 text-center border border-yellow-500/20">
+            <div className="text-4xl mb-3">🔒</div>
+            <h3 className="text-white font-semibold text-lg">Rewards Locked</h3>
+            <p className="text-zinc-400 text-sm mt-2">Spin wheel aur scratch card use karne ke liye pehle ek plan kharido!</p>
+            <a href="/plans" className="mt-4 inline-flex items-center gap-2 rounded-xl bg-[var(--primary)] px-5 py-2.5 font-semibold text-black hover:brightness-95">
+              Plans Dekho →
+            </a>
+          </div>
+        )}
         {status.spin.enabled && (
           <SpinWheel
             available={status.spin.available}
