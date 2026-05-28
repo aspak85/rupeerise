@@ -41,5 +41,33 @@ router.put('/registration-bonus', async (req, res) => {
   return res.json({ bonus: { enabled, amount } });
 });
 
+// ── Generic key-value settings GET/PATCH ──
+// GET  /admin/settings?key=<key>  → { key, value }
+// PATCH /admin/settings           → body: { key, value } → upsert
+router.get('/', async (req, res) => {
+  const key = String(req.query?.key || '').trim();
+  if (!key) return res.status(400).json({ error: 'key query param required' });
+  const row = await prisma.appSetting.findUnique({ where: { key } });
+  if (!row) return res.json({ key, value: null });
+  let value: any = row.value;
+  try { value = JSON.parse(row.value); } catch {}
+  return res.json({ key, value });
+});
+
+router.patch('/', async (req, res) => {
+  const key = String(req.body?.key || '').trim();
+  if (!key) return res.status(400).json({ error: 'key required in body' });
+  const raw = req.body?.value;
+  const value = typeof raw === 'string' ? raw : JSON.stringify(raw);
+  await prisma.appSetting.upsert({
+    where: { key },
+    create: { key, value },
+    update: { value },
+  });
+  let parsed: any = value;
+  try { parsed = JSON.parse(value); } catch {}
+  return res.json({ key, value: parsed });
+});
+
 export { readBonus as readRegistrationBonus };
 export default router;

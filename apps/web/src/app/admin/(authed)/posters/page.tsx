@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ImagePlus, Save, Trash2, Eye, EyeOff, Upload, X, Loader2 } from "lucide-react";
+import { ImagePlus, Save, Trash2, Eye, EyeOff, Upload, X, Loader2, Sparkles } from "lucide-react";
 import { api } from "@/lib/api";
 
 type Poster = {
@@ -15,17 +15,30 @@ type Poster = {
   sortOrder: number;
 };
 
-const GRADIENTS = [
-  { label: "Gold",    value: "from-yellow-500/40 via-amber-500/15 to-transparent" },
-  { label: "Emerald", value: "from-emerald-500/40 via-green-500/15 to-transparent" },
-  { label: "Fuchsia", value: "from-fuchsia-500/40 via-pink-500/15 to-transparent" },
-  { label: "Sky",     value: "from-sky-500/40 via-blue-500/15 to-transparent" },
-  { label: "Rose",    value: "from-rose-500/40 via-red-500/15 to-transparent" },
+// Simple named colors — mapped to inline CSS gradients in PostersStrip
+const GRADIENT_OPTIONS = [
+  { label: "🟡 Gold",    value: "gold",    preview: "linear-gradient(135deg, rgba(234,179,8,0.8), rgba(245,158,11,0.4))" },
+  { label: "🟢 Emerald", value: "emerald", preview: "linear-gradient(135deg, rgba(16,185,129,0.8), rgba(5,150,105,0.4))" },
+  { label: "🟣 Fuchsia", value: "fuchsia", preview: "linear-gradient(135deg, rgba(217,70,239,0.8), rgba(236,72,153,0.4))" },
+  { label: "🔵 Sky",     value: "sky",     preview: "linear-gradient(135deg, rgba(14,165,233,0.8), rgba(59,130,246,0.4))" },
+  { label: "🔴 Rose",    value: "rose",    preview: "linear-gradient(135deg, rgba(244,63,94,0.8), rgba(239,68,68,0.4))" },
+  { label: "🟠 Orange",  value: "orange",  preview: "linear-gradient(135deg, rgba(249,115,22,0.8), rgba(234,179,8,0.4))" },
+  { label: "🔮 Violet",  value: "violet",  preview: "linear-gradient(135deg, rgba(139,92,246,0.8), rgba(99,102,241,0.4))" },
+];
+
+// Readymade templates
+const TEMPLATES = [
+  { name: "Welcome Bonus",       gradient: "gold",    title: "Welcome to RupeeRise 🎁", subtitle: "Sign up today and start earning daily from ₹500.", ctaLabel: "Get Started Free", ctaHref: "/login?signup=1" },
+  { name: "Daily Claim",         gradient: "emerald", title: "Claim Your Daily Reward 🪙", subtitle: "Active plan holders can claim income every 24 hours. Don't miss out!", ctaLabel: "Claim Now", ctaHref: "/login?signup=1" },
+  { name: "Referral Promo",      gradient: "fuchsia", title: "Refer & Earn Big 🤝", subtitle: "Get 45% on your friend's first plan + multi-level commissions!", ctaLabel: "Share Now", ctaHref: "/login?signup=1" },
+  { name: "Plan Promo",          gradient: "sky",     title: "Invest Smart. Earn Daily. 📈", subtitle: "Plans starting from ₹500. Up to 15× returns on Emperor plan.", ctaLabel: "View Plans", ctaHref: "/login?signup=1" },
+  { name: "Diwali / Festival",   gradient: "orange",  title: "🪔 Festival Bonus Offer!", subtitle: "Extra rewards this season. Limited time only — don't miss it!", ctaLabel: "Claim Offer", ctaHref: "/login?signup=1" },
+  { name: "Withdrawal Reminder", gradient: "violet",  title: "Withdrawal Sunday is Here! 💸", subtitle: "Request your withdrawal today. Fast processing, 5% fee only.", ctaLabel: "Withdraw Now", ctaHref: "/login?signup=1" },
 ];
 
 const empty = (): Partial<Poster> => ({
   title: "", subtitle: "", imageUrl: "",
-  gradient: GRADIENTS[0].value, ctaHref: "", ctaLabel: "",
+  gradient: "gold", ctaHref: "/login?signup=1", ctaLabel: "Get Started",
   active: true, sortOrder: 0,
 });
 
@@ -199,6 +212,31 @@ export default function AdminPostersPage() {
           <h3 className="font-semibold">{editingId ? "Poster Edit Karo" : "Naya Poster Add Karo"}</h3>
         </div>
 
+        {/* Templates quick-fill */}
+        <div className="space-y-2">
+          <div className="text-xs text-zinc-400 font-semibold uppercase tracking-widest">⚡ Readymade Templates — ek click mein fill</div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {TEMPLATES.map((t) => {
+              const g = GRADIENT_OPTIONS.find((g) => g.value === t.gradient)!;
+              return (
+                <button
+                  key={t.name}
+                  type="button"
+                  onClick={() => setDraft((d) => ({ ...d, title: t.title, subtitle: t.subtitle, gradient: t.gradient, ctaLabel: t.ctaLabel, ctaHref: t.ctaHref }))}
+                  className="text-left rounded-xl border border-white/10 overflow-hidden hover:scale-[1.02] transition-transform"
+                >
+                  <div className="h-8 w-full" style={{ background: g.preview }} />
+                  <div className="px-2 py-1.5 bg-black/40">
+                    <div className="text-white text-xs font-semibold truncate">{t.name}</div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="border-t border-yellow-500/10" />
+
         {/* Title + Subtitle */}
         <div className="grid sm:grid-cols-2 gap-3">
           <label className="block">
@@ -265,7 +303,14 @@ export default function AdminPostersPage() {
               </div>
             </div>
           ) : (
-            <div className={`rounded-2xl bg-gradient-to-br ${draft.gradient || GRADIENTS[0].value} border border-white/10 flex flex-col justify-center px-6`} style={{ height: 120 }}>
+            <div
+              className="rounded-2xl border border-white/10 flex flex-col justify-center px-6"
+              style={{
+                height: 120,
+                background: GRADIENT_OPTIONS.find((g) => g.value === draft.gradient)?.preview
+                  || "linear-gradient(135deg, rgba(234,179,8,0.6), rgba(245,158,11,0.3))"
+              }}
+            >
               <div className="text-white font-bold text-lg drop-shadow">{draft.title || "Title preview"}</div>
               {draft.subtitle && <div className="text-zinc-200 text-sm mt-1">{draft.subtitle}</div>}
             </div>
@@ -275,12 +320,20 @@ export default function AdminPostersPage() {
         {/* Gradient + Order + CTA */}
         <div className="grid sm:grid-cols-2 gap-3">
           <label className="block">
-            <div className="text-xs text-zinc-400 mb-1">Background Color (agar image nahi hai)</div>
-            <select value={draft.gradient || GRADIENTS[0].value}
-              onChange={(e) => setDraft({ ...draft, gradient: e.target.value })}
-              className={inp}>
-              {GRADIENTS.map((g) => <option key={g.value} value={g.value}>{g.label}</option>)}
-            </select>
+            <div className="text-xs text-zinc-400 mb-1">Background Color</div>
+            <div className="grid grid-cols-4 gap-2">
+              {GRADIENT_OPTIONS.map((g) => (
+                <button
+                  key={g.value}
+                  type="button"
+                  onClick={() => setDraft((d) => ({ ...d, gradient: g.value }))}
+                  className={`rounded-xl border-2 overflow-hidden transition ${draft.gradient === g.value ? "border-yellow-400 scale-105" : "border-transparent"}`}
+                >
+                  <div className="h-10 w-full" style={{ background: g.preview }} />
+                  <div className="text-[10px] text-center py-1 bg-black/40 text-zinc-300">{g.label}</div>
+                </button>
+              ))}
+            </div>
           </label>
           <label className="block">
             <div className="text-xs text-zinc-400 mb-1">Sort Order (0 = pehle)</div>
@@ -345,7 +398,14 @@ export default function AdminPostersPage() {
             {posters.map((p) => (
               <div key={p.id} className={`flex items-center gap-3 rounded-2xl border p-3 transition ${p.active ? "border-yellow-500/15 bg-black/20" : "border-zinc-700/40 bg-black/10 opacity-60"}`}>
                 {/* Thumbnail */}
-                <div className={`relative h-16 w-28 shrink-0 overflow-hidden rounded-xl border border-white/10 ${!p.imageUrl ? `bg-gradient-to-br ${p.gradient}` : ""}`}>
+                <div
+                  className="relative h-16 w-28 shrink-0 overflow-hidden rounded-xl border border-white/10"
+                  style={{
+                    background: p.imageUrl
+                      ? undefined
+                      : (GRADIENT_OPTIONS.find((g) => g.value === p.gradient)?.preview || "linear-gradient(135deg, rgba(234,179,8,0.6), rgba(245,158,11,0.3))")
+                  }}
+                >
                   {p.imageUrl && (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={p.imageUrl} alt={p.title} className="h-full w-full object-cover"

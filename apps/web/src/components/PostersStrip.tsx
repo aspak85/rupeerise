@@ -16,13 +16,35 @@ type Poster = {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "/api";
 
+// Convert Tailwind gradient string to actual CSS gradient
+// Since Tailwind purges dynamic classes, we need inline CSS for API-driven gradients
+function gradientStyle(gradient: string): string {
+  // Map of named gradient presets
+  const presets: Record<string, string> = {
+    gold:    "linear-gradient(135deg, rgba(234,179,8,0.6) 0%, rgba(245,158,11,0.3) 40%, transparent 100%)",
+    emerald: "linear-gradient(135deg, rgba(16,185,129,0.6) 0%, rgba(5,150,105,0.3) 40%, transparent 100%)",
+    fuchsia: "linear-gradient(135deg, rgba(217,70,239,0.6) 0%, rgba(236,72,153,0.3) 40%, transparent 100%)",
+    sky:     "linear-gradient(135deg, rgba(14,165,233,0.6) 0%, rgba(59,130,246,0.3) 40%, transparent 100%)",
+    rose:    "linear-gradient(135deg, rgba(244,63,94,0.6) 0%, rgba(239,68,68,0.3) 40%, transparent 100%)",
+    orange:  "linear-gradient(135deg, rgba(249,115,22,0.6) 0%, rgba(234,179,8,0.3) 40%, transparent 100%)",
+    violet:  "linear-gradient(135deg, rgba(139,92,246,0.6) 0%, rgba(99,102,241,0.3) 40%, transparent 100%)",
+  };
+  if (presets[gradient]) return presets[gradient];
+  // If it's a named preset embedded in the Tailwind string, match by keyword
+  for (const [key, css] of Object.entries(presets)) {
+    if (gradient.includes(key)) return css;
+  }
+  // Default fallback
+  return presets.gold;
+}
+
 const FALLBACK_POSTERS: Poster[] = [
   {
     id: "default-1",
     title: "Welcome to RupeeRise 🏆",
     subtitle: "India's most rewarding investment platform. Start earning daily from ₹500.",
     imageUrl: null,
-    gradient: "from-yellow-500/50 via-amber-500/20 to-transparent",
+    gradient: "gold",
     ctaHref: "/login?signup=1",
     ctaLabel: "Get Started Free",
   },
@@ -31,8 +53,8 @@ const FALLBACK_POSTERS: Poster[] = [
     title: "Earn Daily. Withdraw Weekly. 💸",
     subtitle: "Buy a plan and claim daily income. Referral commissions credited instantly.",
     imageUrl: null,
-    gradient: "from-fuchsia-500/50 via-pink-500/20 to-transparent",
-    ctaHref: "#plans",
+    gradient: "fuchsia",
+    ctaHref: "/login?signup=1",
     ctaLabel: "View Plans",
   },
   {
@@ -40,7 +62,7 @@ const FALLBACK_POSTERS: Poster[] = [
     title: "3-Level Referral System 🤝",
     subtitle: "Earn 45% on first plan + 10%/5%/2% ongoing commissions across 3 levels.",
     imageUrl: null,
-    gradient: "from-emerald-500/50 via-green-500/20 to-transparent",
+    gradient: "emerald",
     ctaHref: "/login?signup=1",
     ctaLabel: "Start Earning",
   },
@@ -132,13 +154,16 @@ export default function PostersStrip() {
               transition={{ duration: 0.45, ease: [0.32, 0.72, 0, 1] }}
               className="absolute inset-0"
             >
-              {/* Background */}
+              {/* Background — use inline style so purged Tailwind classes don't break dynamic gradients */}
               {cur.imageUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={cur.imageUrl} alt={cur.title}
                   className="absolute inset-0 h-full w-full object-cover" />
               ) : (
-                <div className={`absolute inset-0 bg-gradient-to-br ${cur.gradient}`} />
+                <div
+                  className="absolute inset-0"
+                  style={{ background: gradientStyle(cur.gradient) }}
+                />
               )}
 
               {/* Dark overlay for text readability */}

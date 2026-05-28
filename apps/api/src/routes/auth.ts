@@ -295,6 +295,20 @@ router.post('/register', async (req, res) => {
 
     await bumpLogin(user.id, req);
     const token = signJwt({ sub: user.id, role: user.role as any });
+
+    // Send welcome notification to user's inbox
+    try {
+      const displayName = combinedName || firstName || email.split('@')[0] || 'there';
+      await prisma.notification.create({
+        data: {
+          userId: user.id,
+          title: `Welcome to RupeeRise, ${displayName}! 🎉`,
+          body: `Your account is ready! Deposit funds, buy a plan, and start claiming daily income. Refer friends to earn big commissions!`,
+          read: false,
+        },
+      }).catch(() => {}); // non-fatal
+    } catch {}
+
     return res.json({ token, isNewAccount: true, user: publicUser(user) });
   } catch (e) {
     console.error('register error:', e);
