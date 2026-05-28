@@ -16,9 +16,8 @@ export default function PlansSection() {
   const [plans, setPlans] = useState(FALLBACK_PLANS);
 
   useEffect(() => {
-    const api = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
     const ctrl = new AbortController();
-    fetch(`${api}/plans`, { signal: ctrl.signal })
+    fetch("/api/plans", { signal: ctrl.signal })
       .then((res) => {
         if (!res.ok) return;
         return res.json();
