@@ -18,6 +18,7 @@ const NAV = [
   { href: "/admin/security", label: "Security", icon: ShieldAlert },
   { href: "/admin/gift-codes", label: "Gift Codes", icon: Ticket },
   { href: "/admin/rewards", label: "Rewards", icon: Gift },
+  { href: "/admin/referral-bonus", label: "Ref Bonus", icon: Gift },
   { href: "/admin/support", label: "Support", icon: HeadphonesIcon },
   { href: "/admin/settings", label: "Settings", icon: Settings },
   { href: "/admin/settings/deposit-message", label: "Deposit Msg", icon: MessageSquare },

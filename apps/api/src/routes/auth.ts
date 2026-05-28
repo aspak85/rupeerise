@@ -356,6 +356,30 @@ router.post('/login', async (req, res) => {
 
     await bumpLogin(user.id, req);
     const token = signJwt({ sub: user.id, role: user.role as any });
+
+    // Daily login notification (once per day)
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const existing = await prisma.notification.findFirst({
+        where: {
+          userId: user.id,
+          title: { contains: 'Welcome back' },
+          createdAt: { gte: new Date(today) }
+        },
+      });
+      if (!existing) {
+        const displayName = user.firstName || user.name || user.email.split('@')[0];
+        await prisma.notification.create({
+          data: {
+            userId: user.id,
+            title: `Welcome back, ${displayName}! 👋`,
+            body: `You have logged in successfully. Check your plans, claim daily rewards, and refer friends to earn more!`,
+            read: false,
+          },
+        });
+      }
+    } catch {} // non-fatal
+
     return res.json({ token, user: publicUser(user) });
   } catch (e) {
     console.error('login error:', e);

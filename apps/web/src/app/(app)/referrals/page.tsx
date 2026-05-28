@@ -5,7 +5,8 @@ import { Copy, Share2, Trophy, Users2, Check, MessageCircle, Send } from "lucide
 import { api, formatINR } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 
-type Member = { id: string; email?: string | null; phone?: string | null; name: string | null; createdAt: string };
+type ActivePlan = { planName: string; price: number; dailyIncome: number };
+type Member = { id: string; email?: string | null; phone?: string | null; name: string | null; createdAt: string; activePlan: ActivePlan | null };
 type RefMe = {
   code: string;
   counts: { l1: number; l2: number; l3: number };
@@ -223,8 +224,17 @@ export default function ReferralsPage() {
                   <ul className="mt-2 divide-y divide-yellow-500/10">
                     {g.arr.slice(0, 8).map((u) => (
                       <li key={u.id} className="py-2 flex items-center justify-between text-sm text-zinc-300">
-                        <span className="text-white">{display(u)}</span>
-                        <span className="text-xs text-zinc-500">{new Date(u.createdAt).toLocaleDateString("en-IN")}</span>
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-white">{display(u)}</span>
+                          {u.activePlan ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold rounded-full px-2 py-0.5 bg-yellow-500/15 border border-yellow-500/30 text-yellow-200 w-fit">
+                              {u.activePlan.planName} · ₹{u.activePlan.price.toLocaleString("en-IN")}
+                            </span>
+                          ) : (
+                            <span className="text-[10px] text-zinc-500">No plan</span>
+                          )}
+                        </div>
+                        <span className="text-xs text-zinc-500 shrink-0 ml-2">{new Date(u.createdAt).toLocaleDateString("en-IN")}</span>
                       </li>
                     ))}
                   </ul>
