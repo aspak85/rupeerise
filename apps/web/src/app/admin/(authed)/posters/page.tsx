@@ -139,7 +139,18 @@ export default function AdminPostersPage() {
               className="w-full rounded-xl border border-yellow-500/20 bg-black/30 px-3 py-3 text-white"
               placeholder="https://i.imgur.com/yourposter.jpg"
             />
-            <div className="mt-1 text-xs text-zinc-500">Leave blank to use a colored gradient instead.</div>
+            <div className="mt-2 rounded-lg bg-blue-500/10 border border-blue-500/20 px-3 py-2 text-xs text-blue-200">
+              📐 <strong>Recommended poster size:</strong> 1200×400 px (3:1 ratio) · Max 2MB · JPG/PNG/WebP<br/>
+              💡 Free upload: <a href="https://imgur.com/upload" target="_blank" rel="noopener" className="underline">imgur.com</a> ya <a href="https://imgbb.com" target="_blank" rel="noopener" className="underline">imgbb.com</a> par upload karo aur link paste karo
+            </div>
+            {/* Live preview */}
+            {draft.imageUrl && (
+              <div className="mt-2">
+                <div className="text-xs text-zinc-400 mb-1">Preview:</div>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={draft.imageUrl} alt="preview" className="w-full max-h-32 object-cover rounded-xl border border-yellow-500/20" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+              </div>
+            )}
           </label>
           <label className="block">
             <div className="text-xs text-zinc-400 mb-1">Gradient (when no image)</div>
