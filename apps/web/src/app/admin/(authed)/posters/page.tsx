@@ -29,13 +29,17 @@ const empty = (): Partial<Poster> => ({
   active: true, sortOrder: 0,
 });
 
-// Upload image to imgbb (free, no account needed for small files)
-// Falls back to base64 data URL if imgbb fails
+// Upload image to imgbb or compress to small base64
 async function uploadImage(file: File): Promise<string> {
-  // 1. Try imgbb public API (no key required for < 32MB)
+  // Compress image to max 800x400 and quality 0.7 before any upload
+  const compressed = await compressImage(file, 800, 400, 0.75);
+
+  // Try imgbb public API
   try {
     const formData = new FormData();
-    formData.append("image", file);
+    // Send the base64 data (without the data:image/...;base64, prefix)
+    const base64 = compressed.split(",")[1];
+    formData.append("image", base64);
     const res = await fetch("https://api.imgbb.com/1/upload?key=2f9b7a5e7c3d3e1f4a6b8c0d2e4f6a8b", {
       method: "POST",
       body: formData,
@@ -46,12 +50,34 @@ async function uploadImage(file: File): Promise<string> {
     }
   } catch {}
 
-  // 2. Fallback: convert to base64 data URL (works always, stored in DB)
+  // Fallback: return compressed base64 (stored in DB, ~50-150KB)
+  return compressed;
+}
+
+// Compress image using canvas — reduces file size drastically
+function compressImage(file: File, maxW: number, maxH: number, quality: number): Promise<string> {
   return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let { width, height } = img;
+      // Scale down while maintaining aspect ratio
+      if (width > maxW || height > maxH) {
+        const ratio = Math.min(maxW / width, maxH / height);
+        width = Math.round(width * ratio);
+        height = Math.round(height * ratio);
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return reject(new Error("Canvas not supported"));
+      ctx.drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL("image/jpeg", quality));
+    };
+    img.onerror = reject;
+    img.src = url;
   });
 }
 
@@ -85,8 +111,8 @@ export default function AdminPostersPage() {
     if (!file) return;
 
     // Validate
-    if (file.size > 5 * 1024 * 1024) {
-      showToast("err", "File too large. Max 5MB allowed.");
+    if (file.size > 10 * 1024 * 1024) {
+      showToast("err", "File too large. Max 10MB allowed.");
       return;
     }
     if (!file.type.startsWith("image/")) {
@@ -95,6 +121,7 @@ export default function AdminPostersPage() {
     }
 
     setUploading(true);
+    showToast("ok", "Compressing image…");
     try {
       const url = await uploadImage(file);
       setDraft((d) => ({ ...d, imageUrl: url }));
@@ -222,7 +249,7 @@ export default function AdminPostersPage() {
 
           {/* Size hint */}
           <div className="rounded-lg bg-blue-500/10 border border-blue-500/20 px-3 py-2 text-xs text-blue-200">
-            📐 Best size: <strong>1200×400px</strong> (3:1 ratio) · Max 5MB · JPG/PNG/WebP
+            📐 Best size: <strong>1200×400px</strong> (3:1 ratio) · Max 10MB · JPG/PNG/WebP · Auto-compressed before upload
           </div>
 
           {/* Live preview */}

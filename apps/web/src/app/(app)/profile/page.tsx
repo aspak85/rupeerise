@@ -58,14 +58,16 @@ type Deposit = { id: string; amount: number; method: string; status: string; utr
 type Withdrawal = { id: string; amount: number; netAmount: number; feePercent: number; method: string; status: string; createdAt: string };
 type GiftClaim = { id: string; code: string; amount: number; notes: string | null; claimedAt: string };
 
-const SECTIONS: { id: string; label: string; icon: any }[] = [
-  { id: "account", label: "Account", icon: UserIcon },
-  { id: "statement", label: "Statement", icon: FileText },
-  { id: "deposits", label: "Deposits", icon: Wallet },
+type TabId = "account" | "deposits" | "withdrawals" | "statement" | "security";
+
+const TABS: { id: TabId; label: string; icon: any }[] = [
+  { id: "account",     label: "Account",     icon: UserIcon },
+  { id: "deposits",    label: "Deposits",    icon: Wallet },
   { id: "withdrawals", label: "Withdrawals", icon: ArrowDownToLine },
-  { id: "redeem", label: "Gift codes", icon: Gift },
-  { id: "security", label: "Security", icon: ShieldCheck },
+  { id: "statement",   label: "Statement",   icon: FileText },
+  { id: "security",    label: "Security",    icon: ShieldCheck },
 ];
+
 
 export default function ProfilePage() {
   const { user, refresh } = useAuth();
@@ -75,13 +77,11 @@ export default function ProfilePage() {
   const [deposits, setDeposits] = useState<Deposit[]>([]);
   const [withdrawals, setWithdrawals] = useState<Withdrawal[]>([]);
   const [claims, setClaims] = useState<GiftClaim[]>([]);
-  const [active, setActive] = useState<string>("account");
+  const [activeTab, setActiveTab] = useState<TabId>("account");
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const ctrl = new AbortController();
-    const timeout = setTimeout(() => ctrl.abort(), 5000);
     try {
       const [mRes, stRes, dpRes, wdRes, histRes] = await Promise.allSettled([
         api<MeResponse>("/me"),
@@ -96,75 +96,35 @@ export default function ProfilePage() {
       setWithdrawals(wdRes.status === "fulfilled" ? wdRes.value.withdrawals : []);
       setClaims(histRes.status === "fulfilled" ? histRes.value.claims : []);
     } finally {
-      clearTimeout(timeout);
       setLoading(false);
     }
   }, [eventFilter]);
 
   useEffect(() => { load(); }, [load]);
 
-  // Smooth-scroll to section + highlight active section on scroll
-  useEffect(() => {
-    const handler = () => {
-      const ys = SECTIONS.map((s) => {
-        const el = document.getElementById(s.id);
-        if (!el) return { id: s.id, top: Number.POSITIVE_INFINITY };
-        return { id: s.id, top: Math.abs(el.getBoundingClientRect().top - 120) };
-      });
-      ys.sort((a, b) => a.top - b.top);
-      setActive(ys[0].id);
-    };
-    window.addEventListener("scroll", handler, { passive: true });
-    return () => window.removeEventListener("scroll", handler);
-  }, []);
-
   if (loading && !me) {
     return (
-      <div className="space-y-6 max-w-6xl mx-auto w-full pb-20 animate-pulse">
-        {/* Header skeleton */}
+      <div className="space-y-4 max-w-4xl mx-auto w-full pb-20 animate-pulse">
         <div className="glass rounded-2xl p-5 flex items-start gap-4 flex-wrap">
           <div className="skeleton w-16 h-16 rounded-2xl" />
           <div className="flex-1 space-y-2 min-w-0">
             <div className="skeleton h-3 w-20 rounded" />
             <div className="skeleton h-7 w-48 rounded" />
             <div className="skeleton h-4 w-36 rounded" />
-            <div className="flex gap-2 mt-2">
-              <div className="skeleton h-5 w-20 rounded-full" />
-              <div className="skeleton h-5 w-24 rounded-full" />
-            </div>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full sm:w-auto">
-            {[0,1,2,3].map(i => (
-              <div key={i} className="skeleton rounded-xl h-14 w-24" />
-            ))}
+          <div className="grid grid-cols-2 gap-2">
+            {[0,1,2,3].map(i => <div key={i} className="skeleton rounded-xl h-14 w-24" />)}
           </div>
         </div>
-        {/* Nav skeleton */}
         <div className="glass rounded-2xl p-1.5 flex gap-1">
-          {[0,1,2,3,4,5].map(i => (
-            <div key={i} className="skeleton h-9 w-20 rounded-xl" />
-          ))}
+          {[0,1,2,3,4].map(i => <div key={i} className="skeleton h-9 w-24 rounded-xl" />)}
         </div>
-        {/* Content skeleton */}
         <div className="glass rounded-2xl p-5 space-y-3">
           <div className="skeleton h-5 w-32 rounded" />
           <div className="grid gap-4 md:grid-cols-2">
             {[0,1,2,3].map(i => <div key={i} className="skeleton h-12 rounded-xl" />)}
           </div>
           <div className="skeleton h-10 w-36 rounded-xl" />
-        </div>
-        <div className="glass rounded-2xl p-5 space-y-3">
-          <div className="skeleton h-5 w-32 rounded" />
-          {[0,1,2,3,4].map(i => (
-            <div key={i} className="flex items-center gap-4">
-              <div className="skeleton w-10 h-10 rounded-xl shrink-0" />
-              <div className="flex-1 space-y-1.5">
-                <div className="skeleton h-4 w-3/4 rounded" />
-                <div className="skeleton h-3 w-1/2 rounded" />
-              </div>
-              <div className="skeleton h-4 w-16 rounded" />
-            </div>
-          ))}
         </div>
       </div>
     );
@@ -173,25 +133,28 @@ export default function ProfilePage() {
   if (!me) {
     return (
       <div className="max-w-3xl mx-auto p-12 text-center text-zinc-400 text-sm">
-        Could not load profile. <button onClick={load} className="text-yellow-300 underline ml-1">Retry</button>
+        Could not load profile.{" "}
+        <button onClick={load} className="text-yellow-300 underline ml-1">Retry</button>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6 max-w-6xl mx-auto w-full pb-20">
-      {/* Header */}
+    <div className="space-y-4 max-w-4xl mx-auto w-full pb-20">
+      {/* ── Header card ── */}
       <div className="glass rounded-2xl p-5 flex items-start gap-4 flex-wrap">
         <Avatar name={me.user.name || me.user.email} />
         <div className="flex-1 min-w-0">
           <div className="text-xs uppercase tracking-widest text-yellow-400/80">Profile</div>
           <h1 className="text-2xl font-semibold text-white mt-0.5 truncate">
-            {me.user.name || `${me.user.firstName ?? ""} ${me.user.lastName ?? ""}`.trim() || "Welcome"}
+            {me.user.name ||
+              `${me.user.firstName ?? ""} ${me.user.lastName ?? ""}`.trim() ||
+              "Welcome"}
           </h1>
-          <div className="text-sm text-zinc-400 mt-0.5 inline-flex items-center gap-1.5">
+          <div className="text-sm text-zinc-400 mt-0.5 flex items-center gap-1.5">
             <Mail size={13} /> {me.user.email}
           </div>
-          <div className="mt-2 flex items-center gap-2 flex-wrap text-xs">
+          <div className="mt-2 flex items-center gap-2 flex-wrap">
             {me.user.kycVerified ? (
               <Badge color="emerald">KYC Verified</Badge>
             ) : (
@@ -210,195 +173,345 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      {/* Sticky section nav */}
-      <div className="sticky top-2 z-10 glass rounded-2xl p-1.5 overflow-x-auto no-scrollbar">
+      {/* ── Tab navigation ── */}
+      <div className="glass rounded-2xl p-1.5 overflow-x-auto no-scrollbar">
         <div className="flex gap-1 min-w-max">
-          {SECTIONS.map((s) => (
-            <a
-              key={s.id}
-              href={`#${s.id}`}
-              onClick={(e) => {
-                e.preventDefault();
-                document.getElementById(s.id)?.scrollIntoView({ behavior: "smooth", block: "start" });
-              }}
-              className={`shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm transition ${
-                active === s.id
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setActiveTab(t.id)}
+              className={`shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm transition ${
+                activeTab === t.id
                   ? "bg-[var(--primary)] text-black font-semibold"
                   : "text-zinc-300 hover:text-white hover:bg-white/5"
               }`}
             >
-              <s.icon size={14} /> {s.label}
-            </a>
+              <t.icon size={14} /> {t.label}
+            </button>
           ))}
         </div>
       </div>
 
-      {/* ━━━ Account Section ━━━ */}
-      <section id="account" className="scroll-mt-24">
-        <SectionHeading icon={UserIcon} title="Account info" />
-        <EditProfileForm me={me} onSaved={() => { load(); refresh(); }} />
-      </section>
-
-      {/* ━━━ Statement Section ━━━ */}
-      <section id="statement" className="scroll-mt-24">
-        <SectionHeading
-          icon={FileText}
-          title="Statement"
-          right={
-            <div className="flex items-center gap-2">
-              <select
-                value={eventFilter}
-                onChange={(e) => setEventFilter(e.target.value as any)}
-                className="text-xs rounded-lg bg-black/40 border border-yellow-500/20 text-zinc-200 px-2 py-1.5"
-              >
-                <option value="all">All activity</option>
-                <option value="deposit">Deposits</option>
-                <option value="withdrawal">Withdrawals</option>
-                <option value="earnings">Earnings</option>
-              </select>
-              <DownloadButton path="/me/statement.csv" label="CSV" />
-              <DownloadButton path="/me/statement.pdf" label="PDF" />
-            </div>
-          }
+      {/* ── Tab content ── */}
+      {activeTab === "account" && (
+        <AccountTab me={me} onSaved={() => { load(); refresh(); }} />
+      )}
+      {activeTab === "deposits" && (
+        <DepositsTab deposits={deposits} />
+      )}
+      {activeTab === "withdrawals" && (
+        <WithdrawalsTab withdrawals={withdrawals} />
+      )}
+      {activeTab === "statement" && (
+        <StatementTab
+          events={events}
+          filter={eventFilter}
+          onFilterChange={setEventFilter}
         />
-        {events.length === 0 ? (
-          <Empty text="No activity yet for this filter." />
-        ) : (
-          <div className="glass rounded-2xl overflow-hidden">
-            <ul className="divide-y divide-white/5">
-              {events.map((e) => (
-                <li key={`${e.kind}:${e.id}`} className="px-5 py-3 flex items-center gap-4">
-                  <EventIcon kind={e.kind} direction={e.direction} />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm text-white truncate">{e.title}</div>
-                    <div className="text-xs text-zinc-500 inline-flex items-center gap-2">
-                      <span>{new Date(e.at).toLocaleString()}</span>
-                      {e.status && (
-                        <span className={`px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider ${statusCls(e.status)}`}>
-                          {e.status}
-                        </span>
-                      )}
-                      {e.ref && <span className="font-mono truncate">· {e.ref}</span>}
-                    </div>
-                  </div>
-                  <div className={`text-sm font-semibold ${e.direction === "credit" ? "text-emerald-300" : e.direction === "debit" ? "text-red-300" : "text-zinc-400"}`}>
-                    {e.direction === "credit" ? "+" : e.direction === "debit" ? "−" : ""}
-                    {formatINR(e.amount)}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </section>
-
-      {/* ━━━ Deposits Section ━━━ */}
-      <section id="deposits" className="scroll-mt-24">
-        <SectionHeading icon={Wallet} title="Deposits history" />
-        {deposits.length === 0 ? (
-          <Empty text="You haven't made any deposits yet." />
-        ) : (
-          <div className="glass rounded-2xl overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="text-xs uppercase tracking-widest text-yellow-300/80 bg-black/30">
-                  <tr>
-                    <th className="text-left px-4 py-2.5">Date</th>
-                    <th className="text-right px-4 py-2.5">Amount</th>
-                    <th className="text-center px-4 py-2.5">Method</th>
-                    <th className="text-center px-4 py-2.5">Status</th>
-                    <th className="text-left px-4 py-2.5">Reference</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {deposits.map((d) => (
-                    <tr key={d.id} className="border-t border-white/5">
-                      <td className="px-4 py-2.5 text-zinc-300 text-xs">{new Date(d.createdAt).toLocaleString()}</td>
-                      <td className="px-4 py-2.5 text-right text-white font-semibold">{formatINR(d.amount)}</td>
-                      <td className="px-4 py-2.5 text-center text-zinc-300 text-xs uppercase">{d.method.replace("_", " ")}</td>
-                      <td className="px-4 py-2.5 text-center">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase ${statusCls(d.status)}`}>{d.status}</span>
-                      </td>
-                      <td className="px-4 py-2.5 text-zinc-400 text-xs font-mono truncate">{d.utr || "—"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-      </section>
-
-      {/* ━━━ Withdrawals Section ━━━ */}
-      <section id="withdrawals" className="scroll-mt-24">
-        <SectionHeading icon={ArrowDownToLine} title="Withdrawals history" />
-        {withdrawals.length === 0 ? (
-          <Empty text="No withdrawal requests yet." />
-        ) : (
-          <div className="glass rounded-2xl overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="text-xs uppercase tracking-widest text-yellow-300/80 bg-black/30">
-                  <tr>
-                    <th className="text-left px-4 py-2.5">Date</th>
-                    <th className="text-right px-4 py-2.5">Requested</th>
-                    <th className="text-right px-4 py-2.5">Net (after fee)</th>
-                    <th className="text-center px-4 py-2.5">Method</th>
-                    <th className="text-center px-4 py-2.5">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {withdrawals.map((w) => (
-                    <tr key={w.id} className="border-t border-white/5">
-                      <td className="px-4 py-2.5 text-zinc-300 text-xs">{new Date(w.createdAt).toLocaleString()}</td>
-                      <td className="px-4 py-2.5 text-right text-white">{formatINR(w.amount)}</td>
-                      <td className="px-4 py-2.5 text-right text-emerald-300 font-semibold">{formatINR(w.netAmount)}</td>
-                      <td className="px-4 py-2.5 text-center text-zinc-300 text-xs uppercase">{w.method}</td>
-                      <td className="px-4 py-2.5 text-center">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase ${statusCls(w.status)}`}>{w.status}</span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-      </section>
-
-      {/* ━━━ Redeem Section ━━━ */}
-      <section id="redeem" className="scroll-mt-24">
-        <SectionHeading icon={Gift} title="Gift codes" />
-        <RedeemBlock onRedeemed={load} claims={claims} />
-      </section>
-
-      {/* ━━━ Security Section ━━━ */}
-      <section id="security" className="scroll-mt-24">
-        <SectionHeading icon={ShieldCheck} title="Security" />
-        <PasswordCard hasPassword={!!me.user.hasPassword} onChanged={refresh} />
-      </section>
+      )}
+      {activeTab === "security" && (
+        <SecurityTab hasPassword={!!me.user.hasPassword} onChanged={refresh} />
+      )}
     </div>
   );
 }
 
-/* ─── Reusable building blocks ─── */
 
-function SectionHeading({
-  icon: Icon,
-  title,
-  right,
-}: {
-  icon: any;
-  title: string;
-  right?: React.ReactNode;
-}) {
+/* ─── Account Tab ─── */
+function AccountTab({ me, onSaved }: { me: MeResponse; onSaved: () => void }) {
   return (
-    <div className="flex items-center justify-between gap-3 mb-3">
-      <div className="flex items-center gap-2 text-white">
-        <Icon size={18} className="text-yellow-300" />
-        <h2 className="font-semibold text-lg">{title}</h2>
+    <div className="space-y-4">
+      <EditProfileForm me={me} onSaved={onSaved} />
+    </div>
+  );
+}
+
+/* ─── Deposits Tab ─── */
+function DepositsTab({ deposits }: { deposits: Deposit[] }) {
+  const downloadCSV = () => {
+    const header = "Date,Amount,Method,UTR,Status\n";
+    const rows = deposits
+      .map((d) =>
+        [
+          new Date(d.createdAt).toLocaleString(),
+          d.amount,
+          d.method,
+          d.utr || "",
+          d.status,
+        ].join(",")
+      )
+      .join("\n");
+    const blob = new Blob([header + rows], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "deposits.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="glass rounded-2xl overflow-hidden">
+      <div className="flex items-center justify-between px-5 py-3 border-b border-white/5">
+        <h2 className="font-semibold text-white flex items-center gap-2">
+          <Wallet size={16} className="text-yellow-300" /> Deposits History
+        </h2>
+        <button
+          onClick={downloadCSV}
+          disabled={deposits.length === 0}
+          className="inline-flex items-center gap-1.5 text-xs rounded-lg border border-yellow-500/20 px-2.5 py-1.5 text-zinc-200 hover:bg-yellow-500/10 disabled:opacity-40"
+        >
+          <Download size={12} /> CSV
+        </button>
       </div>
-      {right}
+      {deposits.length === 0 ? (
+        <div className="p-8 text-center text-sm text-zinc-400">No deposits yet.</div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="text-xs uppercase tracking-widest text-yellow-300/80 bg-black/30">
+              <tr>
+                <th className="text-left px-4 py-2.5">Date</th>
+                <th className="text-right px-4 py-2.5">Amount</th>
+                <th className="text-center px-4 py-2.5">Method</th>
+                <th className="text-left px-4 py-2.5">UTR</th>
+                <th className="text-center px-4 py-2.5">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {deposits.map((d) => (
+                <tr
+                  key={d.id}
+                  className="border-t border-white/5 hover:bg-white/3 transition cursor-pointer"
+                >
+                  <td className="px-4 py-2.5 text-zinc-300 text-xs whitespace-nowrap">
+                    {new Date(d.createdAt).toLocaleString()}
+                  </td>
+                  <td className="px-4 py-2.5 text-right text-white font-semibold">
+                    {formatINR(d.amount)}
+                  </td>
+                  <td className="px-4 py-2.5 text-center text-zinc-300 text-xs uppercase">
+                    {d.method.replace("_", " ")}
+                  </td>
+                  <td className="px-4 py-2.5 text-zinc-400 text-xs font-mono">{d.utr || "—"}</td>
+                  <td className="px-4 py-2.5 text-center">
+                    <StatusBadge status={d.status} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── Withdrawals Tab ─── */
+function WithdrawalsTab({ withdrawals }: { withdrawals: Withdrawal[] }) {
+  const downloadCSV = () => {
+    const header = "Date,Amount,Net Amount,Method,Status\n";
+    const rows = withdrawals
+      .map((w) =>
+        [
+          new Date(w.createdAt).toLocaleString(),
+          w.amount,
+          w.netAmount,
+          w.method,
+          w.status,
+        ].join(",")
+      )
+      .join("\n");
+    const blob = new Blob([header + rows], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "withdrawals.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="glass rounded-2xl overflow-hidden">
+      <div className="flex items-center justify-between px-5 py-3 border-b border-white/5">
+        <h2 className="font-semibold text-white flex items-center gap-2">
+          <ArrowDownToLine size={16} className="text-yellow-300" /> Withdrawals History
+        </h2>
+        <button
+          onClick={downloadCSV}
+          disabled={withdrawals.length === 0}
+          className="inline-flex items-center gap-1.5 text-xs rounded-lg border border-yellow-500/20 px-2.5 py-1.5 text-zinc-200 hover:bg-yellow-500/10 disabled:opacity-40"
+        >
+          <Download size={12} /> CSV
+        </button>
+      </div>
+      {withdrawals.length === 0 ? (
+        <div className="p-8 text-center text-sm text-zinc-400">No withdrawal requests yet.</div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="text-xs uppercase tracking-widest text-yellow-300/80 bg-black/30">
+              <tr>
+                <th className="text-left px-4 py-2.5">Date</th>
+                <th className="text-right px-4 py-2.5">Requested</th>
+                <th className="text-right px-4 py-2.5">Net (after fee)</th>
+                <th className="text-center px-4 py-2.5">Method</th>
+                <th className="text-center px-4 py-2.5">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {withdrawals.map((w) => (
+                <tr key={w.id} className="border-t border-white/5 hover:bg-white/3 transition cursor-pointer">
+                  <td className="px-4 py-2.5 text-zinc-300 text-xs whitespace-nowrap">
+                    {new Date(w.createdAt).toLocaleString()}
+                  </td>
+                  <td className="px-4 py-2.5 text-right text-white">{formatINR(w.amount)}</td>
+                  <td className="px-4 py-2.5 text-right text-emerald-300 font-semibold">
+                    {formatINR(w.netAmount)}
+                  </td>
+                  <td className="px-4 py-2.5 text-center text-zinc-300 text-xs uppercase">{w.method}</td>
+                  <td className="px-4 py-2.5 text-center">
+                    <StatusBadge status={w.status} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+/* ─── Statement Tab ─── */
+function StatementTab({
+  events,
+  filter,
+  onFilterChange,
+}: {
+  events: StatementEvent[];
+  filter: "all" | "deposit" | "withdrawal" | "earnings";
+  onFilterChange: (v: "all" | "deposit" | "withdrawal" | "earnings") => void;
+}) {
+  const [busyCSV, setBusyCSV] = useState(false);
+  const [busyPDF, setBusyPDF] = useState(false);
+
+  const dlCSV = async () => {
+    setBusyCSV(true);
+    try { await downloadFile("/me/statement.csv"); } catch (e: any) { alert(e?.message || "Download failed"); } finally { setBusyCSV(false); }
+  };
+  const dlPDF = async () => {
+    setBusyPDF(true);
+    try { await downloadFile("/me/statement.pdf"); } catch (e: any) { alert(e?.message || "Download failed"); } finally { setBusyPDF(false); }
+  };
+
+  return (
+    <div className="glass rounded-2xl overflow-hidden">
+      <div className="flex items-center justify-between gap-3 px-5 py-3 border-b border-white/5 flex-wrap">
+        <h2 className="font-semibold text-white flex items-center gap-2">
+          <FileText size={16} className="text-yellow-300" /> Statement
+        </h2>
+        <div className="flex items-center gap-2 flex-wrap">
+          <select
+            value={filter}
+            onChange={(e) => onFilterChange(e.target.value as any)}
+            className="text-xs rounded-lg bg-black/40 border border-yellow-500/20 text-zinc-200 px-2 py-1.5 focus:outline-none"
+          >
+            <option value="all">All activity</option>
+            <option value="deposit">Deposits</option>
+            <option value="withdrawal">Withdrawals</option>
+            <option value="earnings">Earnings</option>
+          </select>
+          <button onClick={dlCSV} disabled={busyCSV}
+            className="inline-flex items-center gap-1 text-xs rounded-lg border border-yellow-500/20 px-2.5 py-1.5 text-zinc-200 hover:bg-yellow-500/10 disabled:opacity-50">
+            {busyCSV ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} CSV
+          </button>
+          <button onClick={dlPDF} disabled={busyPDF}
+            className="inline-flex items-center gap-1 text-xs rounded-lg border border-yellow-500/20 px-2.5 py-1.5 text-zinc-200 hover:bg-yellow-500/10 disabled:opacity-50">
+            {busyPDF ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} PDF
+          </button>
+        </div>
+      </div>
+      {events.length === 0 ? (
+        <div className="p-8 text-center text-sm text-zinc-400">No activity for this filter.</div>
+      ) : (
+        <ul className="divide-y divide-white/5">
+          {events.map((e) => (
+            <li key={`${e.kind}:${e.id}`} className="px-5 py-3 flex items-center gap-4">
+              <EventIcon kind={e.kind} direction={e.direction} />
+              <div className="flex-1 min-w-0">
+                <div className="text-sm text-white truncate">{e.title}</div>
+                <div className="text-xs text-zinc-500 flex items-center gap-2 flex-wrap">
+                  <span>{new Date(e.at).toLocaleString()}</span>
+                  {e.status && (
+                    <span className={`px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider ${statusCls(e.status)}`}>
+                      {e.status}
+                    </span>
+                  )}
+                  {e.ref && <span className="font-mono truncate">· {e.ref}</span>}
+                </div>
+              </div>
+              <div className={`text-sm font-semibold shrink-0 ${
+                e.direction === "credit" ? "text-emerald-300" :
+                e.direction === "debit" ? "text-red-300" : "text-zinc-400"
+              }`}>
+                {e.direction === "credit" ? "+" : e.direction === "debit" ? "−" : ""}
+                {formatINR(e.amount)}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/* ─── Security Tab ─── */
+function SecurityTab({ hasPassword, onChanged }: { hasPassword: boolean; onChanged: () => Promise<void> }) {
+  return (
+    <div className="space-y-4">
+      <PasswordCard hasPassword={hasPassword} onChanged={onChanged} />
+    </div>
+  );
+}
+
+
+/* ─── Shared helpers ─── */
+
+function statusCls(s: string) {
+  const k = s.toLowerCase();
+  if (k === "approved" || k === "active" || k === "ok" || k === "completed") return "bg-emerald-500/15 text-emerald-300";
+  if (k === "pending") return "bg-amber-500/15 text-amber-300";
+  if (k === "rejected" || k === "blocked" || k === "failed") return "bg-red-500/15 text-red-300";
+  return "bg-zinc-700/40 text-zinc-300";
+}
+
+function StatusBadge({ status }: { status: string }) {
+  return (
+    <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase font-semibold ${statusCls(status)}`}>
+      {status}
+    </span>
+  );
+}
+
+function EventIcon({ kind, direction }: { kind: string; direction: string }) {
+  const isCredit = direction === "credit";
+  const icon =
+    kind === "deposit" ? Wallet
+    : kind === "withdrawal" ? ArrowDownToLine
+    : kind === "investment" ? FileText
+    : kind === "spin" || kind === "scratch" ? Sparkles
+    : kind === "claim" ? Gift
+    : History;
+  const Icon = icon as any;
+  return (
+    <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+      isCredit ? "bg-emerald-500/15 text-emerald-300" :
+      direction === "debit" ? "bg-red-500/10 text-red-300" :
+      "bg-yellow-500/10 text-yellow-300"
+    }`}>
+      <Icon size={18} />
     </div>
   );
 }
@@ -427,7 +540,11 @@ function Badge({ children, color }: { children: React.ReactNode; color: "emerald
     : color === "gold" ? "bg-yellow-500/15 text-yellow-300 border-yellow-500/30"
     : color === "amber" ? "bg-amber-500/15 text-amber-300 border-amber-500/30"
     : "bg-zinc-700/40 text-zinc-300 border-white/10";
-  return <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full border text-[10px] uppercase tracking-wider ${cls}`}>{children}</span>;
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full border text-[10px] uppercase tracking-wider ${cls}`}>
+      {children}
+    </span>
+  );
 }
 
 function ReferralChip({ code }: { code: string }) {
@@ -452,59 +569,8 @@ function ReferralChip({ code }: { code: string }) {
   );
 }
 
-function Empty({ text }: { text: string }) {
-  return <div className="glass rounded-2xl p-8 text-center text-sm text-zinc-400">{text}</div>;
-}
 
-function statusCls(s: string) {
-  const k = s.toLowerCase();
-  if (k === "approved" || k === "active" || k === "ok" || k === "completed") return "bg-emerald-500/15 text-emerald-300";
-  if (k === "pending") return "bg-amber-500/15 text-amber-300";
-  if (k === "rejected" || k === "blocked" || k === "failed") return "bg-red-500/15 text-red-300";
-  return "bg-zinc-700/40 text-zinc-300";
-}
-
-function EventIcon({ kind, direction }: { kind: string; direction: string }) {
-  const isCredit = direction === "credit";
-  const icon =
-    kind === "deposit" ? Wallet
-    : kind === "withdrawal" ? ArrowDownToLine
-    : kind === "investment" ? FileText
-    : kind === "spin" || kind === "scratch" ? Sparkles
-    : kind === "claim" ? Gift
-    : History;
-  const Icon = icon as any;
-  return (
-    <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${isCredit ? "bg-emerald-500/15 text-emerald-300" : direction === "debit" ? "bg-red-500/10 text-red-300" : "bg-yellow-500/10 text-yellow-300"}`}>
-      <Icon size={18} />
-    </div>
-  );
-}
-
-function DownloadButton({ path, label }: { path: string; label: string }) {
-  const [busy, setBusy] = useState(false);
-  const click = async () => {
-    setBusy(true);
-    try {
-      await downloadFile(path);
-    } catch (e: any) {
-      alert(e?.message || "Download failed");
-    } finally {
-      setBusy(false);
-    }
-  };
-  return (
-    <button
-      onClick={click}
-      disabled={busy}
-      className="inline-flex items-center gap-1 text-xs rounded-lg border border-yellow-500/20 px-2.5 py-1.5 text-zinc-200 hover:bg-yellow-500/10 disabled:opacity-50"
-    >
-      {busy ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} {label}
-    </button>
-  );
-}
-
-/* ─── Edit Profile ─── */
+/* ─── Edit Profile Form ─── */
 function EditProfileForm({ me, onSaved }: { me: MeResponse; onSaved: () => void }) {
   const [firstName, setFirstName] = useState(me.user.firstName || "");
   const [lastName, setLastName] = useState(me.user.lastName || "");
@@ -551,7 +617,7 @@ function EditProfileForm({ me, onSaved }: { me: MeResponse; onSaved: () => void 
         <input
           value={firstName}
           onChange={(e) => setFirstName(e.target.value.replace(/[^a-zA-Z\s]/g, "").slice(0, 40))}
-          className="input"
+          className="inp"
           placeholder="Aarav"
         />
       </Field>
@@ -559,18 +625,18 @@ function EditProfileForm({ me, onSaved }: { me: MeResponse; onSaved: () => void 
         <input
           value={lastName}
           onChange={(e) => setLastName(e.target.value.replace(/[^a-zA-Z\s]/g, "").slice(0, 40))}
-          className="input"
+          className="inp"
           placeholder="Sharma"
         />
       </Field>
       <Field label="Email (cannot change)" icon={<Mail size={14} />}>
-        <input value={me.user.email} disabled className="input opacity-60 cursor-not-allowed" />
+        <input value={me.user.email} disabled className="inp opacity-60 cursor-not-allowed" />
       </Field>
       <Field label="Mobile" icon={<Phone size={14} />} prefix="+91">
         <input
           value={phone}
           onChange={(e) => setPhone(e.target.value.replace(/\D/g, "").slice(0, 10))}
-          className="input"
+          className="inp"
           placeholder="10-digit mobile"
         />
       </Field>
@@ -586,19 +652,18 @@ function EditProfileForm({ me, onSaved }: { me: MeResponse; onSaved: () => void 
         {ok && <span className="text-xs text-emerald-300">✓ Saved</span>}
         {err && <span className="text-xs text-red-300">{err}</span>}
       </div>
-
       <style jsx>{`
-        .input {
+        .inp {
           width: 100%;
-          background: rgba(0, 0, 0, 0.35);
-          border: 1px solid rgba(255, 215, 0, 0.2);
+          background: rgba(0,0,0,0.35);
+          border: 1px solid rgba(255,215,0,0.2);
           color: white;
           border-radius: 10px;
           padding: 0.55rem 0.75rem;
           font-size: 0.875rem;
           outline: none;
         }
-        .input:focus { border-color: rgba(255, 215, 0, 0.55); }
+        .inp:focus { border-color: rgba(255,215,0,0.55); }
       `}</style>
     </form>
   );
@@ -632,97 +697,8 @@ function Field({
   );
 }
 
-/* ─── Redeem block (compact, on-profile) ─── */
 
-function RedeemBlock({ onRedeemed, claims }: { onRedeemed: () => void; claims: GiftClaim[] }) {
-  const [code, setCode] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-  const [ok, setOk] = useState<{ amount: number; code: string } | null>(null);
-
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErr(null);
-    setOk(null);
-    const c = code.trim().toUpperCase();
-    if (c.length < 4) return setErr("Enter a valid gift code");
-    setBusy(true);
-    try {
-      const r = await api<{ ok: boolean; amount: number; code: string; message: string }>("/redeem", {
-        method: "POST",
-        body: JSON.stringify({ code: c }),
-      });
-      if (!r.ok) return setErr(r.message || "Could not redeem");
-      setOk({ amount: r.amount, code: r.code });
-      setCode("");
-      onRedeemed();
-    } catch (e: any) {
-      setErr(e?.message || "Could not redeem");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className="grid gap-3 md:grid-cols-2">
-      <form onSubmit={submit} className="glass rounded-2xl p-5">
-        <div className="flex items-center gap-2 text-white mb-3">
-          <Sparkles size={16} className="text-yellow-300" />
-          <div className="font-semibold text-sm">Redeem a gift code</div>
-        </div>
-        <input
-          value={code}
-          onChange={(e) => setCode(e.target.value.toUpperCase())}
-          placeholder="DIWALI-ABCD1234"
-          className="w-full font-mono text-center sm:text-left rounded-xl bg-black/40 border border-yellow-500/30 text-white px-4 py-3 outline-none focus:border-yellow-400"
-        />
-        <button
-          type="submit"
-          disabled={busy || !code.trim()}
-          className="mt-3 w-full rounded-xl bg-[var(--primary)] py-2.5 font-semibold text-black hover:brightness-95 disabled:opacity-50 inline-flex items-center justify-center gap-2"
-        >
-          {busy ? <Loader2 size={14} className="animate-spin" /> : <Gift size={14} />}
-          {busy ? "Redeeming…" : "Redeem now"}
-        </button>
-        {ok && (
-          <div className="mt-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 px-3 py-2 text-emerald-300 text-sm">
-            ✓ +{formatINR(ok.amount)} credited! Code <span className="font-mono">{ok.code}</span>
-          </div>
-        )}
-        {err && (
-          <div className="mt-3 rounded-xl bg-red-500/10 border border-red-500/30 px-3 py-2 text-red-300 text-xs">{err}</div>
-        )}
-      </form>
-
-      <div className="glass rounded-2xl p-5">
-        <div className="flex items-center gap-2 text-white mb-3">
-          <History size={16} className="text-yellow-300" />
-          <div className="font-semibold text-sm">Your redemptions</div>
-        </div>
-        {claims.length === 0 ? (
-          <div className="text-center text-sm text-zinc-400 py-6">
-            No redemptions yet. Try a code on the left!
-          </div>
-        ) : (
-          <ul className="space-y-2 max-h-64 overflow-y-auto">
-            {claims.map((c) => (
-              <li key={c.id} className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-black/20">
-                <div className="min-w-0">
-                  <div className="font-mono text-yellow-200 text-sm truncate">{c.code}</div>
-                  <div className="text-[11px] text-zinc-500">{new Date(c.claimedAt).toLocaleString()}</div>
-                </div>
-                <div className="text-emerald-300 font-semibold text-sm shrink-0">+{formatINR(c.amount)}</div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/* ─── Password card ─── */
-
+/* ─── Password Card ─── */
 function PasswordCard({ hasPassword, onChanged }: { hasPassword: boolean; onChanged: () => Promise<void> }) {
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
@@ -768,9 +744,9 @@ function PasswordCard({ hasPassword, onChanged }: { hasPassword: boolean; onChan
     <form onSubmit={submit} className="glass rounded-2xl p-5 grid gap-4 md:grid-cols-2">
       <div className="md:col-span-2 text-sm text-zinc-300">
         {hasPassword ? (
-          <>Change your login password. You'll stay signed in on this device.</>
+          <>Change your login password. You&apos;ll stay signed in on this device.</>
         ) : (
-          <>You haven't set a password yet. Create one so you can log in without OTP next time.</>
+          <>You haven&apos;t set a password yet. Create one so you can log in without OTP next time.</>
         )}
       </div>
 
@@ -787,6 +763,7 @@ function PasswordCard({ hasPassword, onChanged }: { hasPassword: boolean; onChan
           </div>
         </Field>
       )}
+
       <Field label="New password" icon={<Lock size={14} />}>
         <div className="flex items-stretch rounded-xl border border-yellow-500/20 bg-black/30 overflow-hidden focus-within:border-yellow-500/55">
           <input
@@ -799,6 +776,7 @@ function PasswordCard({ hasPassword, onChanged }: { hasPassword: boolean; onChan
           />
         </div>
       </Field>
+
       <Field label="Confirm new password" icon={<Lock size={14} />}>
         <div className="flex items-stretch rounded-xl border border-yellow-500/20 bg-black/30 overflow-hidden focus-within:border-yellow-500/55">
           <input
@@ -819,6 +797,7 @@ function PasswordCard({ hasPassword, onChanged }: { hasPassword: boolean; onChan
           </button>
         </div>
       </Field>
+
       <div className="md:col-span-2 flex items-center gap-3 pt-1">
         <button
           type="submit"

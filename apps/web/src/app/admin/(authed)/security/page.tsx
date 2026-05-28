@@ -104,6 +104,15 @@ export default function SecurityPage() {
         ))}
       </div>
 
+      {/* Info note */}
+      <div className="rounded-xl border border-blue-500/25 bg-blue-500/10 px-4 py-3 flex items-start gap-3">
+        <Shield size={16} className="text-blue-300 mt-0.5 shrink-0" />
+        <p className="text-sm text-blue-200">
+          <span className="font-semibold">Note:</span> IP tracking requires users to have logged in at least once.
+          New accounts show no IP.
+        </p>
+      </div>
+
       {/* Tabs */}
       <div className="glass rounded-2xl overflow-hidden">
         <div className="flex border-b border-yellow-500/10">
