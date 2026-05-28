@@ -85,6 +85,30 @@ router.post('/', requireAuth, async (req: AuthedRequest, res) => {
       return { investment, distribution, isFirstPlan };
     });
 
+    // Send notification to referrer if this user was referred and earned commissions
+    try {
+      const buyer = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { referredById: true, firstName: true, name: true, email: true },
+      });
+      if (buyer?.referredById && result.distribution.distributed.length > 0) {
+        const earned = result.distribution.distributed
+          .filter((d: any) => d.userId === buyer.referredById)
+          .reduce((sum: number, d: any) => sum + Number(d.amount || 0), 0);
+        if (earned > 0) {
+          const buyerName = buyer.firstName || buyer.name || buyer.email.split('@')[0];
+          await prisma.notification.create({
+            data: {
+              userId: buyer.referredById,
+              title: `Referral commission earned! 🎉`,
+              body: `${buyerName} ne ${plan.name} plan kharida! Aapko ₹${earned.toFixed(0)} referral commission mili hai.`,
+              read: false,
+            },
+          }).catch(() => {}); // non-fatal
+        }
+      }
+    } catch {}
+
     return res.json({
       ok: true,
       investment: result.investment,

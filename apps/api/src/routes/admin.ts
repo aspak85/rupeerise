@@ -179,6 +179,28 @@ router.post('/users/:id/adjust', async (req: AuthedRequest, res) => {
       reason: `admin_adjust:${reason || 'manual'}`,
       idempotencyKey: `adjust:${id}:${walletType}:${direction}:${Date.now()}`,
     });
+
+    // Send notification to user when admin credits them
+    if (direction === 'credit' && amt > 0) {
+      try {
+        const notifTitle =
+          walletType === 'referral'
+            ? `Referral bonus credited! 🎉`
+            : walletType === 'bonus'
+            ? `Bonus credited to your account! 🎁`
+            : `Wallet credited by admin`;
+        const notifBody =
+          walletType === 'referral'
+            ? `Admin ne aapko ₹${amt} referral bonus approve kiya! Aap isko Sunday ko withdraw kar sakte hain.`
+            : walletType === 'bonus'
+            ? `₹${amt} bonus aapke bonus wallet mein add kiya gaya hai. ${reason || ''}`
+            : `₹${amt} aapke ${walletType} wallet mein add kiya gaya. Reason: ${reason || 'Admin adjustment'}`;
+        await prisma.notification.create({
+          data: { userId: id, title: notifTitle, body: notifBody, read: false },
+        }).catch(() => {});
+      } catch {}
+    }
+
     return res.json({ ok: true, result });
   } catch (e: any) {
     console.error(e);
