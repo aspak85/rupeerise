@@ -1,6 +1,6 @@
 "use client";
 
-export const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+export const API_URL = process.env.NEXT_PUBLIC_API_URL || "/api";
 const TOKEN_KEY = "rr_token";
 const USER_KEY = "rr_user";
 
