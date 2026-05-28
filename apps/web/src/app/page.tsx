@@ -13,9 +13,9 @@ import Link from "next/link";
 const Hero3D = dynamic(() => import("@/components/Hero3D"), {
   loading: () => <HeroSkeleton />,
 });
-const PostersStrip = dynamic(() => import("@/components/PostersStrip"), { ssr: false });
-const PartnersMarquee = dynamic(() => import("@/components/PartnersMarquee"), { ssr: false });
-const TestimonialsMarquee = dynamic(() => import("@/components/TestimonialsMarquee"), { ssr: false });
+const PostersStrip = dynamic(() => import("@/components/PostersStrip"));
+const PartnersMarquee = dynamic(() => import("@/components/PartnersMarquee"));
+const TestimonialsMarquee = dynamic(() => import("@/components/TestimonialsMarquee"));
 
 function HeroSkeleton() {
   return (
