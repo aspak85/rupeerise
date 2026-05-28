@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Copy, Share2, Trophy, Users2, Check, MessageCircle, Send } from "lucide-react";
 import { api, formatINR } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 
 type Member = { id: string; email?: string | null; phone?: string | null; name: string | null; createdAt: string };
 type RefMe = {
@@ -16,36 +17,55 @@ type RefMe = {
 type LB = { rank: number; user?: { id: string; email?: string | null; phone?: string | null; name?: string | null }; amount: number };
 
 export default function ReferralsPage() {
+  const { user } = useAuth();
+  // Seed referral code from auth context immediately — no API wait
   const [data, setData] = useState<RefMe | null>(null);
   const [board, setBoard] = useState<LB[]>([]);
+  const [loadingData, setLoadingData] = useState(true);
+  const [loadingBoard, setLoadingBoard] = useState(true);
   const [link, setLink] = useState("");
   const [copied, setCopied] = useState<"code" | "link" | null>(null);
 
-  const load = useCallback(async () => {
-    const [me, lb] = await Promise.all([
-      api<RefMe>("/referrals/me"),
-      api<{ leaderboard: LB[] }>("/referrals/leaderboard"),
-    ]);
-    setData(me);
-    setBoard(lb.leaderboard);
+  // Show referral link immediately from auth context
+  const immediateCode = user?.referralCode ?? "";
+  const displayCode = data?.code || immediateCode;
+
+  useEffect(() => {
+    if (displayCode && typeof window !== "undefined") {
+      setLink(`${window.location.origin}/login?ref=${displayCode}`);
+    }
+  }, [displayCode]);
+
+  // Load referral details
+  const loadData = useCallback(async () => {
+    setLoadingData(true);
+    try {
+      const me = await api<RefMe>("/referrals/me");
+      setData(me);
+    } catch {}
+    setLoadingData(false);
+  }, []);
+
+  // Load leaderboard separately so it doesn't block referral info
+  const loadBoard = useCallback(async () => {
+    setLoadingBoard(true);
+    try {
+      const lb = await api<{ leaderboard: LB[] }>("/referrals/leaderboard");
+      setBoard(lb.leaderboard);
+    } catch {}
+    setLoadingBoard(false);
   }, []);
 
   useEffect(() => {
-    load();
-  }, [load]);
-
-  useEffect(() => {
-    if (data?.code && typeof window !== "undefined") {
-      setLink(`${window.location.origin}/login?ref=${data.code}`);
-    }
-  }, [data?.code]);
+    loadData();
+    loadBoard();
+  }, [loadData, loadBoard]);
 
   const copy = async (text: string, which: "code" | "link") => {
     try {
       if (navigator?.clipboard?.writeText) {
         await navigator.clipboard.writeText(text);
       } else {
-        // Fallback for older browsers / insecure contexts
         const ta = document.createElement("textarea");
         ta.value = text;
         ta.style.position = "fixed";
@@ -64,7 +84,7 @@ export default function ReferralsPage() {
 
   const shareMessage = () =>
     `🎉 Join me on RupeeRise — India's premium daily reward investing platform!\n\n` +
-    `Use my referral code: ${data?.code}\n` +
+    `Use my referral code: ${displayCode}\n` +
     `Sign up here: ${link}\n\n` +
     `✨ Earn daily, withdraw weekly, and grow with multi-level referral income.`;
 
@@ -76,7 +96,6 @@ export default function ReferralsPage() {
         return;
       } catch {}
     }
-    // Web Share API unavailable → fallback to copy + WhatsApp
     copy(text, "link");
   };
 
@@ -102,6 +121,7 @@ export default function ReferralsPage() {
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto w-full">
+      {/* Header — shown immediately */}
       <div>
         <div className="text-xs uppercase tracking-widest text-yellow-400/80">Referrals</div>
         <h1 className="text-2xl sm:text-3xl font-semibold text-white mt-1">Invite & earn</h1>
@@ -111,16 +131,20 @@ export default function ReferralsPage() {
         </p>
       </div>
 
+      {/* Referral code card — rendered immediately with auth-context code */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="glass rounded-3xl p-6">
         <div className="grid gap-4 lg:grid-cols-3">
           <div>
             <div className="text-xs uppercase tracking-widest text-zinc-400">Your Code</div>
-            <div className="mt-1 text-3xl font-bold gold-text">{data?.code || "..."}</div>
+            <div className="mt-1 text-3xl font-bold gold-text">
+              {displayCode || <span className="skeleton inline-block w-32 h-8 rounded" />}
+            </div>
             <button
-              onClick={() => copy(data?.code || "", "code")}
+              onClick={() => copy(displayCode, "code")}
+              disabled={!displayCode}
               className={`mt-3 inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition ${
                 copied === "code" ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-200" : "border-yellow-500/20 hover:bg-yellow-500/10 text-zinc-200"
-              }`}
+              } disabled:opacity-50`}
             >
               {copied === "code" ? <><Check size={12} /> Copied!</> : <><Copy size={12} /> Copy code</>}
             </button>
@@ -150,60 +174,100 @@ export default function ReferralsPage() {
               </button>
             </div>
             <div className="mt-3 grid grid-cols-3 gap-3">
-              <Stat title="Total Earnings" value={formatINR(data?.totalReferralEarnings ?? 0)} />
-              <Stat title="Direct (L1)" value={data?.counts.l1 ?? 0} />
-              <Stat title="Team (L1–L3)" value={(data?.counts.l1 ?? 0) + (data?.counts.l2 ?? 0) + (data?.counts.l3 ?? 0)} />
+              {loadingData ? (
+                [0,1,2].map(i => <div key={i} className="skeleton rounded-2xl h-14 animate-pulse" />)
+              ) : (
+                <>
+                  <Stat title="Total Earnings" value={formatINR(data?.totalReferralEarnings ?? 0)} />
+                  <Stat title="Direct (L1)" value={data?.counts.l1 ?? 0} />
+                  <Stat title="Team (L1–L3)" value={(data?.counts.l1 ?? 0) + (data?.counts.l2 ?? 0) + (data?.counts.l3 ?? 0)} />
+                </>
+              )}
             </div>
           </div>
         </div>
       </motion.div>
 
       <div className="grid gap-4 lg:grid-cols-2">
+        {/* My Team */}
         <div className="glass rounded-3xl p-6">
           <div className="flex items-center gap-2 text-white">
             <Users2 size={18} className="text-yellow-300" />
             <h3 className="font-semibold">My Team</h3>
           </div>
-          {([
-            { title: "Level 1 — 10%", arr: data?.tree.level1 ?? [] },
-            { title: "Level 2 — 5%", arr: data?.tree.level2 ?? [] },
-            { title: "Level 3 — 2%", arr: data?.tree.level3 ?? [] },
-          ] as const).map((g) => (
-            <div key={g.title} className="mt-4">
-              <div className="text-xs uppercase tracking-widest text-zinc-400">{g.title}</div>
-              {g.arr.length === 0 ? (
-                <div className="mt-1 text-sm text-zinc-500">No members yet</div>
-              ) : (
-                <ul className="mt-2 divide-y divide-yellow-500/10">
-                  {g.arr.slice(0, 8).map((u) => (
-                    <li key={u.id} className="py-2 flex items-center justify-between text-sm text-zinc-300">
-                      <span className="text-white">{display(u)}</span>
-                      <span className="text-xs text-zinc-500">{new Date(u.createdAt).toLocaleDateString("en-IN")}</span>
-                    </li>
+          {loadingData ? (
+            <div className="mt-4 space-y-3 animate-pulse">
+              {[0,1,2].map(i => (
+                <div key={i}>
+                  <div className="skeleton h-3 w-24 rounded mb-2" />
+                  {[0,1].map(j => (
+                    <div key={j} className="flex items-center justify-between py-2">
+                      <div className="skeleton h-4 w-32 rounded" />
+                      <div className="skeleton h-3 w-20 rounded" />
+                    </div>
                   ))}
-                </ul>
-              )}
+                </div>
+              ))}
             </div>
-          ))}
+          ) : (
+            ([
+              { title: "Level 1 — 10%", arr: data?.tree.level1 ?? [] },
+              { title: "Level 2 — 5%", arr: data?.tree.level2 ?? [] },
+              { title: "Level 3 — 2%", arr: data?.tree.level3 ?? [] },
+            ] as const).map((g) => (
+              <div key={g.title} className="mt-4">
+                <div className="text-xs uppercase tracking-widest text-zinc-400">{g.title}</div>
+                {g.arr.length === 0 ? (
+                  <div className="mt-1 text-sm text-zinc-500">No members yet</div>
+                ) : (
+                  <ul className="mt-2 divide-y divide-yellow-500/10">
+                    {g.arr.slice(0, 8).map((u) => (
+                      <li key={u.id} className="py-2 flex items-center justify-between text-sm text-zinc-300">
+                        <span className="text-white">{display(u)}</span>
+                        <span className="text-xs text-zinc-500">{new Date(u.createdAt).toLocaleDateString("en-IN")}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ))
+          )}
         </div>
 
+        {/* Leaderboard — loads independently */}
         <div className="glass rounded-3xl p-6">
           <div className="flex items-center gap-2 text-white">
             <Trophy size={18} className="text-yellow-300" />
             <h3 className="font-semibold">Top Referrers</h3>
           </div>
-          {board.length === 0 && <div className="mt-3 text-sm text-zinc-500">No leaderboard data yet.</div>}
-          <ul className="mt-3 divide-y divide-yellow-500/10">
-            {board.map((row) => (
-              <li key={row.rank} className="py-2 flex items-center justify-between text-sm text-zinc-300">
-                <span className="flex items-center gap-3">
-                  <span className={`w-6 h-6 rounded-full text-[11px] flex items-center justify-center ${row.rank <= 3 ? "bg-yellow-500/20 text-yellow-300 border border-yellow-500/40" : "bg-zinc-800 text-zinc-300"}`}>{row.rank}</span>
-                  <span className="text-white">{display(row.user || {})}</span>
-                </span>
-                <span className="gold-text font-semibold">{formatINR(row.amount)}</span>
-              </li>
-            ))}
-          </ul>
+          {loadingBoard ? (
+            <div className="mt-3 space-y-2 animate-pulse">
+              {[0,1,2,3,4].map(i => (
+                <div key={i} className="flex items-center justify-between py-2">
+                  <div className="flex items-center gap-3">
+                    <div className="skeleton w-6 h-6 rounded-full" />
+                    <div className="skeleton h-4 w-28 rounded" />
+                  </div>
+                  <div className="skeleton h-4 w-16 rounded" />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <>
+              {board.length === 0 && <div className="mt-3 text-sm text-zinc-500">No leaderboard data yet.</div>}
+              <ul className="mt-3 divide-y divide-yellow-500/10">
+                {board.map((row) => (
+                  <li key={row.rank} className="py-2 flex items-center justify-between text-sm text-zinc-300">
+                    <span className="flex items-center gap-3">
+                      <span className={`w-6 h-6 rounded-full text-[11px] flex items-center justify-center ${row.rank <= 3 ? "bg-yellow-500/20 text-yellow-300 border border-yellow-500/40" : "bg-zinc-800 text-zinc-300"}`}>{row.rank}</span>
+                      <span className="text-white">{display(row.user || {})}</span>
+                    </span>
+                    <span className="gold-text font-semibold">{formatINR(row.amount)}</span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
         </div>
       </div>
     </div>

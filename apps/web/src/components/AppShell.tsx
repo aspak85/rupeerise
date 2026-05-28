@@ -6,6 +6,7 @@ import { LayoutDashboard, Wallet, Users2, ArrowDownToLine, BadgeIndianRupee, Log
 import Logo from "@/components/Logo";
 import { useAuth } from "@/lib/auth";
 import { cn } from "@/components/ui/cn";
+import { warmupApi } from "@/lib/warmup";
 
 const NAV = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -23,6 +24,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const { user, loading, signOut } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
+
+  // Warm up the Render free-tier API as early as possible
+  warmupApi();
 
   useEffect(() => {
     if (loading) return;

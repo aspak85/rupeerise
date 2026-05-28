@@ -80,20 +80,23 @@ export default function ProfilePage() {
 
   const load = useCallback(async () => {
     setLoading(true);
+    const ctrl = new AbortController();
+    const timeout = setTimeout(() => ctrl.abort(), 5000);
     try {
-      const [m, st, dp, wd, hist] = await Promise.all([
+      const [mRes, stRes, dpRes, wdRes, histRes] = await Promise.allSettled([
         api<MeResponse>("/me"),
-        api<{ events: StatementEvent[] }>(`/me/statement?type=${eventFilter}`).catch(() => ({ events: [] })),
-        api<{ deposits: Deposit[] }>("/deposits").catch(() => ({ deposits: [] })),
-        api<{ withdrawals: Withdrawal[] }>("/withdrawals").catch(() => ({ withdrawals: [] })),
-        api<{ claims: GiftClaim[] }>("/redeem/history").catch(() => ({ claims: [] })),
+        api<{ events: StatementEvent[] }>(`/me/statement?type=${eventFilter}`),
+        api<{ deposits: Deposit[] }>("/deposits"),
+        api<{ withdrawals: Withdrawal[] }>("/withdrawals"),
+        api<{ claims: GiftClaim[] }>("/redeem/history"),
       ]);
-      setMe(m);
-      setEvents(st.events.slice(0, 100));
-      setDeposits(dp.deposits);
-      setWithdrawals(wd.withdrawals);
-      setClaims(hist.claims);
+      if (mRes.status === "fulfilled") setMe(mRes.value);
+      setEvents(stRes.status === "fulfilled" ? stRes.value.events.slice(0, 100) : []);
+      setDeposits(dpRes.status === "fulfilled" ? dpRes.value.deposits : []);
+      setWithdrawals(wdRes.status === "fulfilled" ? wdRes.value.withdrawals : []);
+      setClaims(histRes.status === "fulfilled" ? histRes.value.claims : []);
     } finally {
+      clearTimeout(timeout);
       setLoading(false);
     }
   }, [eventFilter]);
@@ -115,10 +118,62 @@ export default function ProfilePage() {
     return () => window.removeEventListener("scroll", handler);
   }, []);
 
-  if (loading || !me) {
+  if (loading && !me) {
+    return (
+      <div className="space-y-6 max-w-6xl mx-auto w-full pb-20 animate-pulse">
+        {/* Header skeleton */}
+        <div className="glass rounded-2xl p-5 flex items-start gap-4 flex-wrap">
+          <div className="skeleton w-16 h-16 rounded-2xl" />
+          <div className="flex-1 space-y-2 min-w-0">
+            <div className="skeleton h-3 w-20 rounded" />
+            <div className="skeleton h-7 w-48 rounded" />
+            <div className="skeleton h-4 w-36 rounded" />
+            <div className="flex gap-2 mt-2">
+              <div className="skeleton h-5 w-20 rounded-full" />
+              <div className="skeleton h-5 w-24 rounded-full" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full sm:w-auto">
+            {[0,1,2,3].map(i => (
+              <div key={i} className="skeleton rounded-xl h-14 w-24" />
+            ))}
+          </div>
+        </div>
+        {/* Nav skeleton */}
+        <div className="glass rounded-2xl p-1.5 flex gap-1">
+          {[0,1,2,3,4,5].map(i => (
+            <div key={i} className="skeleton h-9 w-20 rounded-xl" />
+          ))}
+        </div>
+        {/* Content skeleton */}
+        <div className="glass rounded-2xl p-5 space-y-3">
+          <div className="skeleton h-5 w-32 rounded" />
+          <div className="grid gap-4 md:grid-cols-2">
+            {[0,1,2,3].map(i => <div key={i} className="skeleton h-12 rounded-xl" />)}
+          </div>
+          <div className="skeleton h-10 w-36 rounded-xl" />
+        </div>
+        <div className="glass rounded-2xl p-5 space-y-3">
+          <div className="skeleton h-5 w-32 rounded" />
+          {[0,1,2,3,4].map(i => (
+            <div key={i} className="flex items-center gap-4">
+              <div className="skeleton w-10 h-10 rounded-xl shrink-0" />
+              <div className="flex-1 space-y-1.5">
+                <div className="skeleton h-4 w-3/4 rounded" />
+                <div className="skeleton h-3 w-1/2 rounded" />
+              </div>
+              <div className="skeleton h-4 w-16 rounded" />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (!me) {
     return (
       <div className="max-w-3xl mx-auto p-12 text-center text-zinc-400 text-sm">
-        <Loader2 className="inline-block animate-spin text-yellow-300" size={18} /> Loading profile…
+        Could not load profile. <button onClick={load} className="text-yellow-300 underline ml-1">Retry</button>
       </div>
     );
   }

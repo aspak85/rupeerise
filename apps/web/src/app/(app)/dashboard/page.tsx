@@ -50,22 +50,22 @@ export default function DashboardPage() {
   const [claim, setClaim] = useState<ClaimStatus | null>(null);
   const [rewards, setRewards] = useState<RewardsStatus | null>(null);
   const [investments, setInvestments] = useState<Investment[]>([]);
+  const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    try {
-      const [m, c, r, inv] = await Promise.all([
-        api<MeRes>("/me"),
-        api<ClaimStatus>("/claims/status"),
-        api<RewardsStatus>("/rewards/status"),
-        api<{ investments: Investment[] }>("/investments"),
-      ]);
-      setMe(m);
-      setClaim(c);
-      setRewards(r);
-      setInvestments(inv.investments);
-    } catch {}
+    const [mRes, cRes, rRes, invRes] = await Promise.allSettled([
+      api<MeRes>("/me"),
+      api<ClaimStatus>("/claims/status"),
+      api<RewardsStatus>("/rewards/status"),
+      api<{ investments: Investment[] }>("/investments"),
+    ]);
+    if (mRes.status === "fulfilled") setMe(mRes.value);
+    if (cRes.status === "fulfilled") setClaim(cRes.value);
+    if (rRes.status === "fulfilled") setRewards(rRes.value);
+    if (invRes.status === "fulfilled") setInvestments(invRes.value.investments);
+    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -121,7 +121,7 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto w-full">
-      {/* Greeting */}
+      {/* Greeting — shown immediately from auth context */}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <div className="text-xs uppercase tracking-widest text-yellow-400/80">Welcome back</div>
@@ -136,12 +136,14 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Total balance + Daily Claim */}
+      {/* Total balance + Daily Claim — shown immediately with ₹0 placeholders */}
       <div className="grid gap-4 lg:grid-cols-3">
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="lg:col-span-2 glass rounded-3xl p-6 relative overflow-hidden">
           <div className="absolute -top-20 -right-20 w-72 h-72 rounded-full bg-yellow-500/10 blur-3xl" />
           <div className="text-xs uppercase tracking-widest text-zinc-400">Total Balance</div>
-          <div className="mt-1 text-4xl sm:text-5xl font-bold gold-text">{formatINR(me?.totals.total ?? 0)}</div>
+          <div className={`mt-1 text-4xl sm:text-5xl font-bold gold-text ${loading && !me ? "animate-pulse" : ""}`}>
+            {formatINR(me?.totals.total ?? 0)}
+          </div>
           <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
             {wallets.map((w) => (
               <div key={w.key} className={`rounded-2xl border border-yellow-500/10 bg-gradient-to-br ${w.color} p-3`}>
@@ -149,7 +151,9 @@ export default function DashboardPage() {
                   <w.icon size={14} />
                   <span>{w.title}</span>
                 </div>
-                <div className="mt-1 text-lg font-semibold text-white">{formatINR(balanceByType(w.key))}</div>
+                <div className={`mt-1 text-lg font-semibold text-white ${loading && !me ? "skeleton h-6 w-16 rounded animate-pulse" : ""}`}>
+                  {loading && !me ? "\u00A0" : formatINR(balanceByType(w.key))}
+                </div>
               </div>
             ))}
           </div>
@@ -165,21 +169,24 @@ export default function DashboardPage() {
             <Coins size={14} /> Daily Reward
           </div>
           <div className="mt-2 text-zinc-300 text-sm">
-            {claim?.claimedToday
-              ? "You've claimed today's reward."
-              : claim?.pendingAmount
-                ? "Today's reward is ready to claim."
-                : "Buy a plan to start daily rewards."}
+            {loading && !claim
+              ? "Checking reward status…"
+              : claim?.claimedToday
+                ? "You've claimed today's reward."
+                : claim?.pendingAmount
+                  ? "Today's reward is ready to claim."
+                  : "Buy a plan to start daily rewards."}
           </div>
-          <div className="mt-5 text-4xl font-bold gold-text">
+          <div className={`mt-5 text-4xl font-bold gold-text ${loading && !claim ? "animate-pulse" : ""}`}>
             +{formatINR(claim?.pendingAmount || claim?.todayAmount || dailyIncome)}
           </div>
+          {/* Claim button shown immediately; enabled/disabled once API responds */}
           <button
             onClick={onClaim}
-            disabled={busy || !!claim?.claimedToday || !claim?.pendingAmount}
+            disabled={busy || loading || !!claim?.claimedToday || !claim?.pendingAmount}
             className="mt-5 w-full rounded-xl bg-[var(--primary)] py-3 font-semibold text-black hover:brightness-95 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {busy ? "Claiming…" : claim?.claimedToday ? `Next claim in ${countdown}` : "Claim Now"}
+            {busy ? "Claiming…" : loading && !claim ? "Loading…" : claim?.claimedToday ? `Next claim in ${countdown}` : "Claim Now"}
           </button>
           {toast && <div className="mt-3 text-xs text-yellow-200 bg-yellow-500/10 border border-yellow-500/30 rounded-lg px-3 py-2">{toast}</div>}
         </motion.div>
@@ -231,10 +238,10 @@ export default function DashboardPage() {
 
       {/* Quick stats */}
       <div className="grid gap-4 grid-cols-2 sm:grid-cols-4">
-        <Stat title="Active Plans" value={me?.stats.activeInvestments ?? 0} />
-        <Stat title="Daily Income" value={formatINR(dailyIncome)} />
-        <Stat title="Total Withdrawn" value={formatINR(me?.stats.totalWithdrawn ?? 0)} />
-        <Stat title="Referral Code" value={me?.user.referralCode || "--"} />
+        <Stat title="Active Plans" value={loading && !me ? "…" : String(me?.stats.activeInvestments ?? 0)} />
+        <Stat title="Daily Income" value={loading && investments.length === 0 ? "…" : formatINR(dailyIncome)} />
+        <Stat title="Total Withdrawn" value={loading && !me ? "…" : formatINR(me?.stats.totalWithdrawn ?? 0)} />
+        <Stat title="Referral Code" value={me?.user.referralCode || user?.referralCode || "--"} />
       </div>
 
       {/* VIP Progress */}
