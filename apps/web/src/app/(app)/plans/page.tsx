@@ -9,8 +9,8 @@ type Plan = {
   id: string;
   name: string;
   price: number;
-  daily_income: number;
-  duration_days: number;
+  dailyIncome: number;
+  durationDays: number;
   total_return: number;
   active: boolean;
 };
@@ -21,10 +21,10 @@ type Plan = {
  * the live API responds within the 3s budget we replace them with real data.
  */
 const FALLBACK_PLANS: Plan[] = [
-  { id: "fallback-starter", name: "Starter", price: 500, daily_income: 50, duration_days: 30, total_return: 1500, active: true },
-  { id: "fallback-bronze", name: "Bronze", price: 2000, daily_income: 220, duration_days: 30, total_return: 6600, active: true },
-  { id: "fallback-silver", name: "Silver", price: 5000, daily_income: 575, duration_days: 30, total_return: 17250, active: true },
-  { id: "fallback-gold-vip", name: "Gold VIP", price: 10000, daily_income: 1200, duration_days: 30, total_return: 36000, active: true },
+  { id: "fallback-starter", name: "Starter", price: 500, dailyIncome: 50, durationDays: 30, total_return: 1500, active: true },
+  { id: "fallback-bronze", name: "Bronze", price: 2000, dailyIncome: 220, durationDays: 30, total_return: 6600, active: true },
+  { id: "fallback-silver", name: "Silver", price: 5000, dailyIncome: 575, durationDays: 30, total_return: 17250, active: true },
+  { id: "fallback-gold-vip", name: "Gold VIP", price: 10000, dailyIncome: 1200, durationDays: 30, total_return: 36000, active: true },
 ];
 
 export default function PlansPage() {
@@ -145,8 +145,8 @@ export default function PlansPage() {
               </div>
               <div className="mt-2 text-3xl font-bold gold-text">{formatINR(p.price)}</div>
               <ul className="mt-4 space-y-2 text-sm text-zinc-300 flex-1">
-                <li className="flex items-center gap-2"><Check size={14} className="text-yellow-400" /> Daily Income <span className="ml-auto text-white font-medium">{formatINR(p.daily_income)}</span></li>
-                <li className="flex items-center gap-2"><Check size={14} className="text-yellow-400" /> Duration <span className="ml-auto text-white font-medium">{p.duration_days} days</span></li>
+                <li className="flex items-center gap-2"><Check size={14} className="text-yellow-400" /> Daily Income <span className="ml-auto text-white font-medium">{formatINR(p.dailyIncome)}</span></li>
+                <li className="flex items-center gap-2"><Check size={14} className="text-yellow-400" /> Duration <span className="ml-auto text-white font-medium">{p.durationDays} days</span></li>
                 <li className="flex items-center gap-2"><Check size={14} className="text-yellow-400" /> Total Return <span className="ml-auto text-white font-medium">{p.total_return ? formatINR(p.total_return) : "—"}</span></li>
                 <li className="flex items-center gap-2 text-zinc-400"><Sparkles size={14} className="text-yellow-400" /> Daily claim required</li>
               </ul>

@@ -15,13 +15,35 @@ type Poster = {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "/api";
 
+const FALLBACK_POSTERS: Poster[] = [
+  {
+    id: "default-1",
+    title: "Welcome to RupeeRise 🏆",
+    subtitle: "India's most rewarding investment platform. Start earning daily from ₹500.",
+    imageUrl: null,
+    gradient: "from-yellow-500/40 via-amber-500/15 to-transparent",
+    ctaHref: "/login?signup=1",
+    ctaLabel: "Get Started Free",
+  },
+  {
+    id: "default-2",
+    title: "Earn Daily. Withdraw Weekly.",
+    subtitle: "Buy a plan and claim daily income. Referral commissions credited instantly.",
+    imageUrl: null,
+    gradient: "from-fuchsia-500/40 via-pink-500/15 to-transparent",
+    ctaHref: "#plans",
+    ctaLabel: "View Plans",
+  },
+];
+
 /**
  * Top-of-page promotional carousel. Auto-swipes every 5 seconds, pause on
  * hover, dot indicators + arrow controls. Slides come from the admin-managed
  * /posters endpoint so marketing copy can change without code deploys.
+ * Falls back to built-in default posters when admin hasn't added any yet.
  */
 export default function PostersStrip() {
-  const [posters, setPosters] = useState<Poster[]>([]);
+  const [posters, setPosters] = useState<Poster[]>(FALLBACK_POSTERS);
   const [index, setIndex] = useState(0);
   const [hovered, setHovered] = useState(false);
 
@@ -31,8 +53,9 @@ export default function PostersStrip() {
         const r = await fetch(`${API_BASE}/posters`, { cache: "no-store" });
         const data = await r.json();
         if (Array.isArray(data?.posters) && data.posters.length) setPosters(data.posters);
+        // else keep FALLBACK_POSTERS
       } catch {
-        /* ignore — section just stays empty */
+        /* ignore — fallback posters stay visible */
       }
     })();
   }, []);
@@ -46,7 +69,6 @@ export default function PostersStrip() {
 
   if (!posters.length) return null;
   const cur = posters[index] || posters[0];
-
   return (
     <section className="px-4 sm:px-6 pt-4 pb-2">
       <div

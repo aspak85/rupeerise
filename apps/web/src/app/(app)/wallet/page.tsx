@@ -48,6 +48,12 @@ type DepositConfig = {
   minDeposit: number;
 };
 
+type DepositBonusConfig = {
+  bonusPercent: number;
+  message: string;
+  enabled: boolean;
+};
+
 // Build the UPI deep link with amount embedded so the user doesn't need to type it in their UPI app.
 function upiPayLink(ch: { value: string; payeeName: string }, amount: number, note = "RupeeRise Deposit") {
   const params = new URLSearchParams({
@@ -86,6 +92,7 @@ export default function WalletPage() {
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [deposits, setDeposits] = useState<Deposit[]>([]);
   const [config, setConfig] = useState<DepositConfig | null>(null);
+  const [bonusConfig, setBonusConfig] = useState<DepositBonusConfig | null>(null);
   const [amount, setAmount] = useState<number>(500);
   const [utr, setUtr] = useState("");
   const [method, setMethod] = useState<"razorpay" | "manual_utr" | "upi">("razorpay");
@@ -111,6 +118,13 @@ export default function WalletPage() {
       setMethod(cfg.razorpay.enabled ? "razorpay" : "manual_utr");
       // Pre-select the admin-marked default channel for the QR display.
       setSelectedChannelId((prev) => prev || cfg.defaultChannel?.id || cfg.channels[0]?.id || null);
+    }
+    // Fetch deposit bonus config (non-blocking)
+    try {
+      const bonus = await api<{ key: string; value: DepositBonusConfig }>("/admin/settings?key=deposit_config");
+      if (bonus?.value) setBonusConfig(bonus.value);
+    } catch {
+      /* ignore — no bonus message shown */
     }
   }, []);
 
@@ -253,6 +267,13 @@ export default function WalletPage() {
                   placeholder="0"
                 />
               </label>
+
+              {/* Deposit bonus message */}
+              {bonusConfig?.enabled && bonusConfig.message && (
+                <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-200 font-medium">
+                  🎁 {bonusConfig.message}
+                </div>
+              )}
 
               <div className="flex gap-2 flex-wrap">
                 {[500, 1000, 2000, 5000, 10000, 25000, 50000].map((v) => (

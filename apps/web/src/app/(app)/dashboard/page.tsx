@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import {
   Coins, Sparkles, Users2, Wallet, BadgeIndianRupee, TrendingUp, Trophy,
-  Gift, Zap, Flame, ShieldCheck, Award, Rocket, Star, Lock,
+  Gift, Zap, Flame, ShieldCheck, Award, Rocket, Star, Lock, ArrowDownToLine,
 } from "lucide-react";
 import Link from "next/link";
 import { api, formatINR } from "@/lib/api";
@@ -157,10 +157,16 @@ export default function DashboardPage() {
               </div>
             ))}
           </div>
-          <div className="mt-5 flex flex-wrap gap-3">
-            <Link href="/wallet" className="rounded-xl bg-[var(--primary)] px-4 py-2.5 text-sm font-semibold text-black">+ Deposit</Link>
-            <Link href="/plans" className="rounded-xl border border-yellow-500/30 px-4 py-2.5 text-sm font-semibold text-zinc-100 hover:bg-yellow-500/10">Buy Plan</Link>
-            <Link href="/withdraw" className="rounded-xl border border-yellow-500/30 px-4 py-2.5 text-sm font-semibold text-zinc-100 hover:bg-yellow-500/10">Withdraw</Link>
+          <div className="mt-5 flex flex-wrap gap-3 sm:flex-nowrap">
+            <Link href="/wallet" className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 rounded-xl bg-[var(--primary)] px-4 py-2.5 text-sm font-semibold text-black">
+              <Wallet size={16} /> Deposit
+            </Link>
+            <Link href="/plans" className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 rounded-xl border border-yellow-500/30 px-4 py-2.5 text-sm font-semibold text-zinc-100 hover:bg-yellow-500/10">
+              <BadgeIndianRupee size={16} /> Buy Plan
+            </Link>
+            <Link href="/withdraw" className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 rounded-xl border border-yellow-500/30 px-4 py-2.5 text-sm font-semibold text-zinc-100 hover:bg-yellow-500/10">
+              <ArrowDownToLine size={16} /> Withdraw
+            </Link>
           </div>
         </motion.div>
 

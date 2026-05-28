@@ -20,6 +20,9 @@ const NAV = [
   { href: "/support", label: "Support", icon: HeadphonesIcon },
 ];
 
+// Only 5 key items shown in mobile bottom nav to avoid cramping
+const MOBILE_NAV_HREFS = ["/dashboard", "/plans", "/wallet", "/rewards", "/profile"];
+
 export default function AppShell({ children }: { children: ReactNode }) {
   const { user, loading, signOut } = useAuth();
   const router = useRouter();
@@ -114,19 +117,19 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
         {/* Mobile bottom nav */}
         <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-20 border-t border-yellow-500/10 bg-black/70 backdrop-blur-xl">
-          <div className="flex overflow-x-auto no-scrollbar">
-            {NAV.map((item) => {
+          <div className="flex">
+            {NAV.filter((item) => MOBILE_NAV_HREFS.includes(item.href)).map((item) => {
               const active = pathname === item.href;
               return (
                 <Link
                   key={item.href}
                   href={item.href}
                   className={cn(
-                    "shrink-0 min-w-[72px] flex flex-col items-center justify-center py-2 text-[10px] gap-0.5 transition px-2",
+                    "flex-1 flex flex-col items-center justify-center py-2 text-[10px] gap-0.5 transition",
                     active ? "text-yellow-300" : "text-zinc-400"
                   )}
                 >
-                  <item.icon size={16} />
+                  <item.icon size={18} />
                   <span className="whitespace-nowrap">{item.label}</span>
                 </Link>
               );
