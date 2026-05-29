@@ -31,19 +31,18 @@ function slotStartIST(now: Date, durationSec: number): Date {
 }
 
 /**
- * Format a slot start as "YYYYMMDD-HHMMss" using the IST clock face.
- * Seconds are included because with 15-second rounds, multiple periods can
- * fall within the same minute.
+ * Sequential period code. We derive a monotonically increasing integer from
+ * the slot's start time: count how many `durationSec` slots have elapsed
+ * since a fixed epoch (2026-01-01 00:00 IST). Then add 1001 so the first
+ * visible period number is always a 4+ digit like "1001", "1002", "1003"…
+ * This gives operators a clean ascending counter that's still deterministic
+ * (same wall-clock → same period on every API replica).
  */
-function periodCode(slotStart: Date): string {
-  const ist = new Date(slotStart.getTime() + IST_OFFSET_MS);
-  const yyyy = ist.getUTCFullYear();
-  const mm = String(ist.getUTCMonth() + 1).padStart(2, '0');
-  const dd = String(ist.getUTCDate()).padStart(2, '0');
-  const hh = String(ist.getUTCHours()).padStart(2, '0');
-  const mi = String(ist.getUTCMinutes()).padStart(2, '0');
-  const ss = String(ist.getUTCSeconds()).padStart(2, '0');
-  return `${yyyy}${mm}${dd}-${hh}${mi}${ss}`;
+const EPOCH_IST_MS = Date.UTC(2025, 11, 31, 18, 30, 0); // 2026-01-01 00:00 IST in UTC
+function periodCode(slotStart: Date, durationSec: number): string {
+  const elapsed = slotStart.getTime() - EPOCH_IST_MS;
+  const slotIndex = Math.floor(elapsed / (durationSec * 1000));
+  return String(slotIndex + 1001);
 }
 
 /** Public-friendly round shape returned by the API. */
@@ -200,7 +199,7 @@ export async function getOrCreateCurrentRound(): Promise<{
   const now = new Date();
   const startedAt = slotStartIST(now, cfg.roundDurationSec);
   const endsAt = new Date(startedAt.getTime() + cfg.roundDurationSec * 1000);
-  const period = periodCode(startedAt);
+  const period = periodCode(startedAt, cfg.roundDurationSec);
 
   // Idempotent create — concurrent requests within the same slot all converge.
   const round = await prisma.luckyHitRound.upsert({
