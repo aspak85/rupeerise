@@ -30,7 +30,11 @@ function slotStartIST(now: Date, durationSec: number): Date {
   return new Date(flooredIst - IST_OFFSET_MS);
 }
 
-/** Format a slot start as "YYYYMMDD-HHMM" using the IST clock face. */
+/**
+ * Format a slot start as "YYYYMMDD-HHMMss" using the IST clock face.
+ * Seconds are included because with 15-second rounds, multiple periods can
+ * fall within the same minute.
+ */
 function periodCode(slotStart: Date): string {
   const ist = new Date(slotStart.getTime() + IST_OFFSET_MS);
   const yyyy = ist.getUTCFullYear();
@@ -38,7 +42,8 @@ function periodCode(slotStart: Date): string {
   const dd = String(ist.getUTCDate()).padStart(2, '0');
   const hh = String(ist.getUTCHours()).padStart(2, '0');
   const mi = String(ist.getUTCMinutes()).padStart(2, '0');
-  return `${yyyy}${mm}${dd}-${hh}${mi}`;
+  const ss = String(ist.getUTCSeconds()).padStart(2, '0');
+  return `${yyyy}${mm}${dd}-${hh}${mi}${ss}`;
 }
 
 /** Public-friendly round shape returned by the API. */

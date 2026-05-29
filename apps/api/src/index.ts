@@ -139,7 +139,12 @@ app.listen(port, async () => {
     await ensurePlansSeeded();
     await ensureChannelsSeeded();
     await ensureAdminBootstrap();
-    console.log('[boot] seeded plans + payment channels + admin');
+    // Force Lucky Hit config to 15s rounds on every boot. Any stale 180s/30s
+    // saved value from earlier deploys is overwritten. Admin edits persist
+    // until next redeploy (intentional — operator wants 15s hard-coded).
+    const { setLuckyHitConfig, DEFAULT_LUCKY_HIT_CONFIG } = await import('./lib/appSettings.js');
+    await setLuckyHitConfig(DEFAULT_LUCKY_HIT_CONFIG);
+    console.log('[boot] seeded plans + channels + admin + lucky-hit 15s config');
   } catch (e) {
     console.warn('[boot] seed skipped:', (e as Error).message);
   }
