@@ -15,6 +15,7 @@ router.get('/', requireAuth, async (req: AuthedRequest, res) => {
       // in the response — strip below.
       select: {
         id: true,
+        uid: true,
         phone: true,
         email: true,
         name: true,
