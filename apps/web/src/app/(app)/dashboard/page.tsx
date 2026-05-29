@@ -174,15 +174,14 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto w-full">
-      {/* Greeting — shown immediately from auth context */}
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <div className="text-xs uppercase tracking-widest text-yellow-400/80">Welcome back</div>
-          <h1 className="text-2xl sm:text-3xl font-semibold text-white mt-1 truncate">
-            {me?.user.name || me?.user.email || user?.email}
-          </h1>
-        </div>
-        <div className="flex items-center gap-3">
+      {/* Greeting — centered welcome message */}
+      <div className="text-center">
+        <div className="text-xs uppercase tracking-widest text-yellow-400/80">Welcome back</div>
+        <h1 className="text-2xl sm:text-3xl font-semibold text-white mt-1 truncate">
+          {me?.user.name || me?.user.email || user?.email}
+        </h1>
+      </div>
+      <div className="flex items-center justify-end gap-3">
           {/* Notification bell */}
           <div className="relative" ref={notifRef}>
             <button
@@ -250,7 +249,6 @@ export default function DashboardPage() {
             <span className="font-semibold text-yellow-300">Bronze</span>
           </div>
         </div>
-      </div>
 
       {/* Total balance + Daily Claim — shown immediately with ₹0 placeholders */}
       <div className="grid gap-4 lg:grid-cols-3">

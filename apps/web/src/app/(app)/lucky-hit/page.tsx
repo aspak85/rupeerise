@@ -50,6 +50,7 @@ export default function LuckyHitPage() {
   // When a round ends, we freeze the SETTLED round here for REVEAL_MS so both
   // sides' cards can flip open visibly before resetting for next round.
   const [reveal,setReveal] = useState<Round|null>(null);
+  const [winBanner,setWinBanner] = useState<{amount:number;side:Side}|null>(null);
 
   const loadWallets = useCallback(async()=>{try{const r=await api<{wallets:WalletRow[]}>("/me");setWallets(r.wallets);}catch{}},[]);
   const loadState = useCallback(async()=>{
@@ -62,6 +63,7 @@ export default function LuckyHitPage() {
         const prev=s.history.find(h=>h.period===old);
         if(prev?.result){setReveal(prev);}
         void loadWallets();
+        void loadMyBets();
       }
       prevPeriodRef.current=s.round.period;
     }catch{}
@@ -80,6 +82,18 @@ export default function LuckyHitPage() {
 
   useEffect(()=>{const id=setInterval(()=>setNow(Date.now()),200);return()=>clearInterval(id);},[]);
   useEffect(()=>{if(!reveal)return;const id=setTimeout(()=>setReveal(null),REVEAL_MS);return()=>clearTimeout(id);},[reveal]);
+
+  // Show win banner when reveal + user's bet was a win
+  useEffect(()=>{
+    if(!reveal||!reveal.result) return;
+    const myBet = myBets.find(b=>b.period===reveal.period);
+    if(myBet && myBet.side===reveal.result){
+      const payout = myBet.payout || myBet.amount * (reveal.result==="lucky_hit"?9:1.9);
+      setWinBanner({amount:payout,side:reveal.result});
+      const id=setTimeout(()=>setWinBanner(null),4000);
+      return()=>clearTimeout(id);
+    }
+  },[reveal,myBets]);
 
   const round=data?.round; const cfg=data?.config;
   const effectiveMs=useMemo(()=>round?Math.max(0,round.msRemaining-(now-fetchedAt)):0,[round,now,fetchedAt]);
@@ -112,6 +126,22 @@ export default function LuckyHitPage() {
 
   return(
     <div className="space-y-3 max-w-md mx-auto w-full pb-8">
+      {/* Win notification banner — slides in from top */}
+      <AnimatePresence>
+        {winBanner&&(
+          <motion.div initial={{opacity:0,y:-40}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-40}} className="fixed top-0 left-0 right-0 z-50 flex justify-center pt-2 px-4 pointer-events-none">
+            <div className="glass rounded-xl border-2 border-emerald-400/60 bg-emerald-500/20 px-5 py-3 flex items-center gap-3 shadow-2xl shadow-emerald-500/30 pointer-events-auto">
+              <Trophy size={20} className="text-yellow-300"/>
+              <div>
+                <div className="text-xs text-emerald-200 font-semibold uppercase">You Won!</div>
+                <div className="text-lg font-bold text-white">{formatINR(winBanner.amount)}</div>
+              </div>
+              <div className="text-[10px] text-emerald-300 uppercase">{LABEL[winBanner.side]}</div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Header + balance */}
       <div className="flex items-center justify-between px-1">
         <div className="flex items-center gap-2"><Dices size={16} className="text-yellow-300"/><span className="font-bold text-white">Lucky Hit</span></div>

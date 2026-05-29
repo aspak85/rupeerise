@@ -21,10 +21,9 @@ const NAV = [
   { href: "/support", label: "Support", icon: HeadphonesIcon },
 ];
 
-// Only 5 key items shown in mobile bottom nav to avoid cramping. Lucky Hit
-// earns its slot here because it's the most engagement-driving page; Profile
-// is reachable from the top-right avatar in the mobile header.
-const MOBILE_NAV_HREFS = ["/dashboard", "/plans", "/lucky-hit", "/wallet", "/rewards"];
+// Only 5 key items shown in mobile bottom nav. Profile/Account is essential
+// for the yaarwin-style UX where users manage everything from this tab.
+const MOBILE_NAV_HREFS = ["/dashboard", "/lucky-hit", "/wallet", "/referrals", "/profile"];
 
 export default function AppShell({ children }: { children: ReactNode }) {
   const { user, loading, signOut } = useAuth();

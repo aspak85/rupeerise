@@ -17,6 +17,8 @@ datasource db {
 
 model User {
   id            String   @id @default(cuid())
+  /// Sequential user ID shown in the UI (1001, 1002, 1003…). Auto-assigned on signup.
+  uid           Int      @unique @default(autoincrement())
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   email         String   @unique
