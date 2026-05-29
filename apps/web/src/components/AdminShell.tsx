@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { ReactNode, useEffect } from "react";
-import { LayoutDashboard, Users, Wallet, ArrowDownToLine, BadgeIndianRupee, LogOut, ShieldCheck, Settings, QrCode, Ticket, Gift, HeadphonesIcon, Image as ImageIcon, ShieldAlert, MessageSquare } from "lucide-react";
+import { LayoutDashboard, Users, Wallet, ArrowDownToLine, BadgeIndianRupee, LogOut, ShieldCheck, Settings, QrCode, Ticket, Gift, HeadphonesIcon, Image as ImageIcon, ShieldAlert, MessageSquare, Dices } from "lucide-react";
 import Logo from "@/components/Logo";
 import { useAuth } from "@/lib/auth";
 import { cn } from "@/components/ui/cn";
@@ -18,6 +18,7 @@ const NAV = [
   { href: "/admin/security", label: "Security", icon: ShieldAlert },
   { href: "/admin/gift-codes", label: "Gift Codes", icon: Ticket },
   { href: "/admin/rewards", label: "Rewards", icon: Gift },
+  { href: "/admin/lucky-hit", label: "Lucky Hit", icon: Dices },
   { href: "/admin/referral-bonus", label: "Ref Bonus", icon: Gift },
   { href: "/admin/support", label: "Support", icon: HeadphonesIcon },
   { href: "/admin/settings", label: "Settings", icon: Settings },

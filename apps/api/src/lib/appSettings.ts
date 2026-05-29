@@ -160,3 +160,54 @@ export const getSupportConfig = () =>
   getSetting<SupportConfig>('support_config', DEFAULT_SUPPORT_CONFIG);
 export const setSupportConfig = (cfg: SupportConfig) =>
   setSetting('support_config', cfg);
+
+
+/* ────────────────────────── Lucky Hit Config ─────────────────────────
+ *
+ * Knobs for the /lucky-hit colour-prediction game. All amounts are INR.
+ *
+ *   enabled            — show the page + accept bets at all
+ *   minBet / maxBet    — per-bet bounds enforced server-side
+ *   roundDurationSec   — slot length (default 180s = 3 min)
+ *   lockSeconds        — final window where bets are frozen ("locked" state)
+ *   colorPayout        — multiplier for red/black wins (default 1.9×)
+ *   luckyHitPayout     — multiplier for lucky-hit wins (default 9×)
+ *   redWeight / blackWeight / luckyHitWeight — RNG weights for the result.
+ *     The three weights are normalised (any non-negative integers work).
+ *     Defaults bias toward an honest split between the two colours plus a
+ *     small lucky-hit chance: red 47, black 47, lucky_hit 6 (≈ 6%).
+ *
+ * Keep this admin-tunable so payouts and house edge can be adjusted without
+ * a redeploy. Cached for 30s in-process; admin save invalidates immediately.
+ * ─────────────────────────────────────────────────────────────────── */
+
+export type LuckyHitConfig = {
+  enabled: boolean;
+  minBet: number;
+  maxBet: number;
+  roundDurationSec: number;
+  lockSeconds: number;
+  colorPayout: number;
+  luckyHitPayout: number;
+  redWeight: number;
+  blackWeight: number;
+  luckyHitWeight: number;
+};
+
+export const DEFAULT_LUCKY_HIT_CONFIG: LuckyHitConfig = {
+  enabled: true,
+  minBet: 10,
+  maxBet: 5000,
+  roundDurationSec: 180,
+  lockSeconds: 30,
+  colorPayout: 1.9,
+  luckyHitPayout: 9,
+  redWeight: 47,
+  blackWeight: 47,
+  luckyHitWeight: 6,
+};
+
+export const getLuckyHitConfig = () =>
+  getSetting<LuckyHitConfig>('lucky_hit_config', DEFAULT_LUCKY_HIT_CONFIG);
+export const setLuckyHitConfig = (cfg: LuckyHitConfig) =>
+  setSetting('lucky_hit_config', cfg);

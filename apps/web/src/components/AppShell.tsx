@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { ReactNode, useEffect } from "react";
-import { LayoutDashboard, Wallet, Users2, ArrowDownToLine, BadgeIndianRupee, LogOut, BellRing, Gift, Ticket, HeadphonesIcon, UserCircle2 } from "lucide-react";
+import { LayoutDashboard, Wallet, Users2, ArrowDownToLine, BadgeIndianRupee, LogOut, BellRing, Gift, Ticket, HeadphonesIcon, UserCircle2, Dices } from "lucide-react";
 import Logo from "@/components/Logo";
 import { useAuth } from "@/lib/auth";
 import { cn } from "@/components/ui/cn";
@@ -12,6 +12,7 @@ const NAV = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/plans", label: "Plans", icon: BadgeIndianRupee },
   { href: "/rewards", label: "Rewards", icon: Gift },
+  { href: "/lucky-hit", label: "Lucky Hit", icon: Dices },
   { href: "/redeem", label: "Redeem", icon: Ticket },
   { href: "/wallet", label: "Wallet", icon: Wallet },
   { href: "/referrals", label: "Refer", icon: Users2 },
@@ -20,8 +21,10 @@ const NAV = [
   { href: "/support", label: "Support", icon: HeadphonesIcon },
 ];
 
-// Only 5 key items shown in mobile bottom nav to avoid cramping
-const MOBILE_NAV_HREFS = ["/dashboard", "/plans", "/wallet", "/rewards", "/profile"];
+// Only 5 key items shown in mobile bottom nav to avoid cramping. Lucky Hit
+// earns its slot here because it's the most engagement-driving page; Profile
+// is reachable from the top-right avatar in the mobile header.
+const MOBILE_NAV_HREFS = ["/dashboard", "/plans", "/lucky-hit", "/wallet", "/rewards"];
 
 export default function AppShell({ children }: { children: ReactNode }) {
   const { user, loading, signOut } = useAuth();
