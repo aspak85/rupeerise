@@ -96,6 +96,7 @@ router.get('/rounds', async (req, res) => {
         endsAt: r.endsAt,
         status: r.status,
         result: r.result,
+        forcedResult: r.forcedResult,
         redTotal: Number(r.redTotal),
         blackTotal: Number(r.blackTotal),
         luckyHitTotal: Number(r.luckyHitTotal),

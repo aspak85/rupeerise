@@ -111,6 +111,12 @@ const SIDE_META: Record<
 
 const SIDES: Side[] = ["red", "black", "lucky_hit"];
 
+// How long (ms) we hold the cards on the just-settled previous round so the
+// flip animation is actually visible to humans. The server has already moved
+// on to the next round by the time the client polls past `endsAt`, so without
+// this client-side freeze the user would never see the cards turn over.
+const REVEAL_FREEZE_MS = 2500;
+
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
@@ -153,13 +159,43 @@ export default function LuckyHitPage() {
   const [fetchedAt, setFetchedAt] = useState<number>(() => Date.now());
   const prevPeriodRef = useRef<string | null>(null);
   const [revealKey, setRevealKey] = useState(0);
-  // The just-settled round we should flash a "RED WINS!" / etc. banner for.
-  // Cleared after the splash auto-dismisses. Stored as just the round —
-  // matching myBet is derived at render time so we never need a follow-up
-  // setState (which would trip react-hooks/set-state-in-effect).
-  const [splashRound, setSplashRound] = useState<Round | null>(null);
+  // The just-settled round we're freezing the cards on so the flip animation
+  // is visible. Cleared automatically after REVEAL_FREEZE_MS.
+  const [pendingReveal, setPendingReveal] = useState<Round | null>(null);
+  // Track how much wallet balances change between polls so we can briefly
+  // flash the deltas — gives the user immediate visual confirmation that a
+  // win was credited.
+  const [walletDeltas, setWalletDeltas] = useState<Record<string, number>>({});
+  const prevBalancesRef = useRef<Record<string, number>>({});
 
   /* ----- data loaders ---------------------------------------------- */
+
+  const loadWallets = useCallback(async () => {
+    try {
+      const r = await api<{ wallets: WalletRow[] }>("/me");
+      // Diff each wallet against last snapshot — surface wins as a green flash
+      // on the Earnings tile, debits as a red flash on Deposit/Bonus.
+      const deltas: Record<string, number> = {};
+      const next: Record<string, number> = {};
+      for (const w of r.wallets) {
+        const newBal = Number(w.balance);
+        const prev = prevBalancesRef.current[w.type];
+        if (prev !== undefined && Math.abs(newBal - prev) > 0.001) {
+          deltas[w.type] = newBal - prev;
+        }
+        next[w.type] = newBal;
+      }
+      prevBalancesRef.current = next;
+      setWallets(r.wallets);
+      if (Object.keys(deltas).length) {
+        setWalletDeltas(deltas);
+        // Auto-clear the flash so it doesn't linger past the reveal.
+        setTimeout(() => setWalletDeltas({}), 3500);
+      }
+    } catch {
+      /* non-fatal */
+    }
+  }, []);
 
   const loadState = useCallback(async () => {
     try {
@@ -168,21 +204,24 @@ export default function LuckyHitPage() {
       setData(s);
       setError(null);
       setAmount((a) => Math.min(s.config.maxBet, Math.max(s.config.minBet, a)));
-      // Round transition detection: when the period flips, fire the cards
-      // animation AND surface a result splash for the previous round.
-      if (prevPeriodRef.current && prevPeriodRef.current !== s.round.period) {
-        setRevealKey((k) => k + 1);
-        // The first row of `history` is the just-settled previous round.
-        const prev = s.history[0];
-        if (prev && prev.period === prevPeriodRef.current && prev.result) {
-          setSplashRound(prev);
+      // Detect a round transition: previous round just ended, server moved on.
+      // Freeze the cards on the previous round so the user actually sees the flip.
+      const oldPeriod = prevPeriodRef.current;
+      const newPeriod = s.round.period;
+      if (oldPeriod && oldPeriod !== newPeriod) {
+        const justSettled = s.history.find((h) => h.period === oldPeriod);
+        if (justSettled && justSettled.result) {
+          setPendingReveal(justSettled);
+          setRevealKey((k) => k + 1);
         }
+        // Round flipped — wallets likely changed (winners credited). Refresh now.
+        void loadWallets();
       }
-      prevPeriodRef.current = s.round.period;
+      prevPeriodRef.current = newPeriod;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load Lucky Hit state");
     }
-  }, []);
+  }, [loadWallets]);
 
   const loadMyBets = useCallback(async () => {
     try {
@@ -202,15 +241,6 @@ export default function LuckyHitPage() {
     }
   }, []);
 
-  const loadWallets = useCallback(async () => {
-    try {
-      const r = await api<{ wallets: WalletRow[] }>("/me");
-      setWallets(r.wallets);
-    } catch {
-      /* non-fatal */
-    }
-  }, []);
-
   /* ----- timers ----------------------------------------------------- */
 
   useEffect(() => {
@@ -222,12 +252,12 @@ export default function LuckyHitPage() {
     const t2 = setTimeout(fireMine, 0);
     const t3 = setTimeout(fireLive, 0);
     const t4 = setTimeout(fireWallet, 0);
-    // State polled fast (1.5s) so the countdown stays close to wall-clock.
-    // Live bets polled at 3s — they're decorative. Wallets every 5s.
-    const stateTick = setInterval(fireState, 1500);
-    const liveTick = setInterval(fireLive, 3000);
-    const walletTick = setInterval(fireWallet, 5000);
-    const mineTick = setInterval(fireMine, 5000);
+    // Aggressive polling cadence — the round is only 15s long so anything
+    // slower than ~1s feels stale.
+    const stateTick = setInterval(fireState, 1000);
+    const liveTick = setInterval(fireLive, 2000);
+    const walletTick = setInterval(fireWallet, 2000);
+    const mineTick = setInterval(fireMine, 3000);
     return () => {
       clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4);
       clearInterval(stateTick); clearInterval(liveTick);
@@ -235,56 +265,63 @@ export default function LuckyHitPage() {
     };
   }, [loadState, loadMyBets, loadLiveBets, loadWallets]);
 
-  // Local clock — drives the countdown text smoothly between fetches.
+  // Local clock — drives the countdown text smoothly.
   useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 250);
+    const id = setInterval(() => setNow(Date.now()), 200);
     return () => clearInterval(id);
   }, []);
 
-  // When a result splash is shown, look up the user's bet for that round (if
-  // any) so the splash can display "you won/lost". Derived at render time —
-  // no extra setState needed.
-  const splashMyBet = useMemo(() => {
-    if (!splashRound) return null;
-    return myBets.find((b) => b.period === splashRound.period) ?? null;
-  }, [myBets, splashRound]);
-
-  // Auto-dismiss the splash after 4 seconds.
+  // Auto-clear the pending-reveal freeze.
   useEffect(() => {
-    if (!splashRound) return;
-    const id = setTimeout(() => setSplashRound(null), 4000);
+    if (!pendingReveal) return;
+    const id = setTimeout(() => setPendingReveal(null), REVEAL_FREEZE_MS);
     return () => clearTimeout(id);
-  }, [splashRound]);
+  }, [pendingReveal]);
 
   /* ----- derived ---------------------------------------------------- */
 
-  const round = data?.round;
+  const liveRound = data?.round;
   const cfg = data?.config;
 
   const effectiveMs = useMemo(() => {
-    if (!round) return 0;
-    return Math.max(0, round.msRemaining - (now - fetchedAt));
-  }, [round, now, fetchedAt]);
+    if (!liveRound) return 0;
+    return Math.max(0, liveRound.msRemaining - (now - fetchedAt));
+  }, [liveRound, now, fetchedAt]);
 
-  // Trust local clock when polling lags: if status says "open" but our local
-  // countdown already dropped to zero, treat the round as locked so the user
-  // can't keep tapping "Place bet" against a closing round.
-  const phase: "open" | "locked" | "settled" = useMemo(() => {
-    if (!round) return "open";
-    if (round.status === "settled") return "settled";
-    if (round.status === "locked") return "locked";
+  // What the cards should display: the just-settled previous round during the
+  // freeze window, otherwise the current round.
+  const displayRound: Round | null = pendingReveal ?? liveRound ?? null;
+
+  // Phase the cards animate against. During the freeze we force "settled"
+  // so the flip kicks off; otherwise we trust the server status, with a
+  // local-clock fallback so a polling stall doesn't keep showing "open"
+  // after the lock window has passed.
+  const displayPhase: "open" | "locked" | "settled" = useMemo(() => {
+    if (pendingReveal) return "settled";
+    if (!liveRound) return "open";
+    if (liveRound.status === "settled") return "settled";
+    if (liveRound.status === "locked") return "locked";
     return effectiveMs > 0 ? "open" : "locked";
-  }, [round, effectiveMs]);
+  }, [pendingReveal, liveRound, effectiveMs]);
 
-  const canBet = !!data?.enabled && phase === "open";
+  // Bets are accepted only against the LIVE current round in its open phase,
+  // not against the freeze-target (which is a past round).
+  const canBet = !!data?.enabled && !pendingReveal && displayPhase === "open";
 
   const balanceOf = (t: string) =>
     Number(wallets.find((w) => w.type === t)?.balance ?? 0);
 
+  // The user's bet on the round we're currently revealing — used to colour the
+  // result banner with their personal outcome.
+  const myBetOnReveal = useMemo(() => {
+    if (!pendingReveal) return null;
+    return myBets.find((b) => b.period === pendingReveal.period) ?? null;
+  }, [myBets, pendingReveal]);
+
   /* ----- actions --------------------------------------------------- */
 
   const placeBet = async () => {
-    if (!round || !cfg) return;
+    if (!liveRound || !cfg) return;
     setToast(null);
     if (amount < cfg.minBet) return setToast({ kind: "err", msg: `Min bet ₹${cfg.minBet}` });
     if (amount > cfg.maxBet) return setToast({ kind: "err", msg: `Max bet ₹${cfg.maxBet}` });
@@ -295,11 +332,11 @@ export default function LuckyHitPage() {
         body: JSON.stringify({ side, amount }),
       });
       setToast({ kind: "ok", msg: `${formatINR(amount)} on ${SIDE_META[side].label} — locked in!` });
-      // Refresh totals + wallets immediately so the UI feels live.
-      loadState();
-      loadMyBets();
-      loadLiveBets();
-      loadWallets();
+      // Refresh totals + wallet immediately so the user feels the deduction.
+      void loadState();
+      void loadMyBets();
+      void loadLiveBets();
+      void loadWallets();
     } catch (e) {
       const msg = e instanceof ApiError ? e.message : e instanceof Error ? e.message : "Bet failed";
       setToast({ kind: "err", msg });
@@ -318,7 +355,7 @@ export default function LuckyHitPage() {
   if (error && !data) {
     return <div className="max-w-3xl mx-auto p-10 text-center text-red-300 text-sm">{error}</div>;
   }
-  if (!data || !cfg || !round) {
+  if (!data || !cfg || !liveRound || !displayRound) {
     return <div className="max-w-3xl mx-auto p-10 text-center text-zinc-400 text-sm">Loading Lucky Hit…</div>;
   }
   if (!data.enabled) {
@@ -338,29 +375,33 @@ export default function LuckyHitPage() {
     <div className="space-y-5 max-w-5xl mx-auto w-full">
       <Header />
 
-      {/* Wallet strip — always-visible balance for confidence at bet time */}
+      {/* Wallet strip — refreshes every 2s, flashes on change */}
       <WalletStrip
         deposit={balanceOf("deposit")}
         bonus={balanceOf("bonus")}
         earnings={balanceOf("earnings")}
+        deltas={walletDeltas}
       />
 
-      {/* Round + cards */}
+      {/* Round + cards (cards reflect either current round OR the freeze target) */}
       <RoundPanel
-        round={round}
+        liveRound={liveRound}
+        displayRound={displayRound}
+        myBetOnReveal={myBetOnReveal}
         cfg={cfg}
         effectiveMs={effectiveMs}
-        phase={phase}
+        displayPhase={displayPhase}
         revealKey={revealKey}
+        isFreezing={!!pendingReveal}
       />
 
       {/* History strip */}
       <HistoryStrip rounds={data.history} />
 
-      {/* Live score totals + live bets feed (split layout on desktop) */}
+      {/* Score totals + bet panel + live bets */}
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2 space-y-4">
-          <ScorePanel round={round} />
+          <ScorePanel round={liveRound} />
           <BetPanel
             side={side}
             setSide={setSide}
@@ -372,6 +413,7 @@ export default function LuckyHitPage() {
             busy={busy}
             onPlace={placeBet}
             toast={toast}
+            isFreezing={!!pendingReveal}
           />
         </div>
         <LiveBetsPanel bets={liveBets} now={now} />
@@ -379,13 +421,6 @@ export default function LuckyHitPage() {
 
       {/* My record */}
       <MyRecord bets={myBets} />
-
-      {/* Floating result splash overlay — fires for ~4s on every round flip */}
-      <AnimatePresence>
-        {splashRound && splashRound.result && (
-          <ResultSplash round={splashRound} myBet={splashMyBet} />
-        )}
-      </AnimatePresence>
     </div>
   );
 }
@@ -404,7 +439,7 @@ function Header() {
         Pick a colour · win up to <span className="gold-text">9×</span>
       </h1>
       <p className="mt-1 text-sm text-zinc-400 max-w-2xl">
-        Quick rounds — 15 seconds to bet, then watch the cards open.
+        Fast 15-second rounds — bet, then watch the cards open.
       </p>
     </div>
   );
@@ -418,10 +453,12 @@ function WalletStrip({
   deposit,
   bonus,
   earnings,
+  deltas,
 }: {
   deposit: number;
   bonus: number;
   earnings: number;
+  deltas: Record<string, number>;
 }) {
   return (
     <motion.div
@@ -429,9 +466,9 @@ function WalletStrip({
       animate={{ opacity: 1, y: 0 }}
       className="grid grid-cols-3 gap-2 sm:gap-3"
     >
-      <WalletTile label="Deposit" amount={deposit} icon={<Wallet size={14} />} accent="zinc" sub="bet from here" />
-      <WalletTile label="Bonus" amount={bonus} icon={<Coins size={14} />} accent="yellow" sub="bet fallback" />
-      <WalletTile label="Earnings" amount={earnings} icon={<Trophy size={14} />} accent="emerald" sub="wins land here" />
+      <WalletTile label="Deposit" amount={deposit} delta={deltas.deposit} icon={<Wallet size={14} />} accent="zinc" sub="bet from here" />
+      <WalletTile label="Bonus" amount={bonus} delta={deltas.bonus} icon={<Coins size={14} />} accent="yellow" sub="bet fallback" />
+      <WalletTile label="Earnings" amount={earnings} delta={deltas.earnings} icon={<Trophy size={14} />} accent="emerald" sub="wins land here" />
     </motion.div>
   );
 }
@@ -439,12 +476,14 @@ function WalletStrip({
 function WalletTile({
   label,
   amount,
+  delta,
   icon,
   accent,
   sub,
 }: {
   label: string;
   amount: number;
+  delta?: number;
   icon: React.ReactNode;
   accent: "zinc" | "yellow" | "emerald";
   sub: string;
@@ -456,7 +495,11 @@ function WalletTile({
       ? "border-emerald-500/30 bg-emerald-500/5 text-emerald-300"
       : "border-zinc-500/30 bg-zinc-800/30 text-zinc-200";
   return (
-    <div className={`rounded-2xl border p-3 ${tone}`}>
+    <motion.div
+      animate={delta ? { scale: [1, 1.05, 1] } : { scale: 1 }}
+      transition={{ duration: 0.45 }}
+      className={`relative rounded-2xl border p-3 ${tone}`}
+    >
       <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest opacity-90">
         {icon} {label}
       </div>
@@ -464,7 +507,27 @@ function WalletTile({
         {formatINR(amount)}
       </div>
       <div className="text-[10px] text-zinc-500 mt-0.5">{sub}</div>
-    </div>
+
+      {/* Delta flash — appears for ~3.5s when the balance changes */}
+      <AnimatePresence>
+        {delta !== undefined && delta !== 0 && (
+          <motion.div
+            key={delta + "" + label}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className={`absolute -top-2 right-2 text-[11px] font-bold px-2 py-0.5 rounded-full border ${
+              delta > 0
+                ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-200"
+                : "bg-red-500/20 border-red-500/40 text-red-200"
+            }`}
+          >
+            {delta > 0 ? "+" : ""}
+            {formatINR(Math.abs(delta))}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
   );
 }
 
@@ -473,23 +536,40 @@ function WalletTile({
 /* ================================================================ */
 
 function RoundPanel({
-  round,
+  liveRound,
+  displayRound,
+  myBetOnReveal,
   cfg,
   effectiveMs,
-  phase,
+  displayPhase,
   revealKey,
+  isFreezing,
 }: {
-  round: Round;
+  liveRound: Round;
+  displayRound: Round;
+  myBetOnReveal: MyBet | null;
   cfg: StateResp["config"];
   effectiveMs: number;
-  phase: "open" | "locked" | "settled";
+  displayPhase: "open" | "locked" | "settled";
   revealKey: number;
+  isFreezing: boolean;
 }) {
-  // Countdown copy by phase. While "open" the timer counts down to the lock
-  // window; while "locked" it counts to settlement.
-  const phaseLabel = phase === "open" ? "Bets close in" : phase === "locked" ? "Cards opening in" : "Settled";
+  // Header reflects the LIVE round (period / countdown), not the freeze
+  // target — the user shouldn't see the period clock rewind during a reveal.
+  const phaseLabel =
+    displayPhase === "open"
+      ? "Bets close in"
+      : displayPhase === "locked"
+      ? "Cards opening in"
+      : isFreezing
+      ? "Result revealed"
+      : "Settled";
   const phaseColor =
-    phase === "open" ? "text-emerald-300" : phase === "locked" ? "text-yellow-300" : "text-zinc-300";
+    displayPhase === "open"
+      ? "text-emerald-300"
+      : displayPhase === "locked"
+      ? "text-yellow-300"
+      : "text-emerald-300";
 
   return (
     <motion.div
@@ -500,55 +580,103 @@ function RoundPanel({
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <div className="text-xs uppercase tracking-widest text-zinc-400">Period</div>
-          <div className="text-white font-mono font-semibold text-lg sm:text-xl">{round.period}</div>
+          <div className="text-white font-mono font-semibold text-lg sm:text-xl">{liveRound.period}</div>
         </div>
         <div className="text-right">
           <div className={`text-xs uppercase tracking-widest ${phaseColor}`}>{phaseLabel}</div>
           <div className="flex items-center gap-2 justify-end">
             <Clock size={16} className={phaseColor} />
             <span className="text-3xl sm:text-4xl font-bold tabular-nums text-white">
-              {formatMs(effectiveMs)}
+              {isFreezing ? "—" : formatMs(effectiveMs)}
             </span>
           </div>
         </div>
       </div>
 
       <div className="mt-3 flex items-center gap-2 flex-wrap">
-        <PhasePill phase={phase} />
+        <PhasePill phase={displayPhase} />
         <span className="text-[11px] text-zinc-500 inline-flex items-center gap-1">
-          <Timer size={10} /> Round {Math.round(cfg.roundDurationSec)}s · last {cfg.lockSeconds}s = card flip
+          <Timer size={10} /> {Math.round(cfg.roundDurationSec)}s round · last {cfg.lockSeconds}s = card flip
         </span>
       </div>
 
-      <div className="mt-5">
-        <VsCards key={revealKey} phase={phase} result={round.result} />
+      {/* Cards stage */}
+      <div className="mt-5 relative">
+        <VsCards key={revealKey} phase={displayPhase} result={displayRound.result} />
+
+        {/* Big result label that materialises with the cards. Acts as the
+            "RED WIN!" banner overlay sitting on top of the cards stage. */}
+        <AnimatePresence>
+          {displayPhase === "settled" && displayRound.result && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.5, y: 30 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              transition={{ delay: 0.9, type: "spring", stiffness: 220, damping: 18 }}
+              className="absolute inset-x-0 top-[40%] -translate-y-1/2 flex flex-col items-center pointer-events-none"
+            >
+              <div
+                className={`px-6 py-2 rounded-2xl backdrop-blur-md border-2 shadow-2xl ${
+                  displayRound.result === "red"
+                    ? "bg-red-500/30 border-red-300 text-red-100"
+                    : displayRound.result === "black"
+                    ? "bg-zinc-900/70 border-white text-white"
+                    : "bg-yellow-400/30 border-yellow-200 text-yellow-50"
+                }`}
+              >
+                <div className="text-[10px] uppercase tracking-widest opacity-80 text-center">
+                  {displayRound.period}
+                </div>
+                <div className="text-2xl sm:text-3xl font-extrabold tracking-wide">
+                  {displayRound.result === "red"
+                    ? "RED WINS!"
+                    : displayRound.result === "black"
+                    ? "BLACK WINS!"
+                    : "LUCKY HIT ★"}
+                </div>
+              </div>
+              {/* Personal outcome */}
+              {myBetOnReveal && (
+                <div
+                  className={`mt-2 text-xs font-semibold px-3 py-1 rounded-full border ${
+                    myBetOnReveal.side === displayRound.result
+                      ? "bg-emerald-500/20 text-emerald-200 border-emerald-500/40"
+                      : "bg-red-500/15 text-red-200 border-red-500/30"
+                  }`}
+                >
+                  {myBetOnReveal.side === displayRound.result
+                    ? `You won ${formatINR(myBetOnReveal.payout || myBetOnReveal.amount * (displayRound.result === "lucky_hit" ? cfg.luckyHitPayout : cfg.colorPayout))}`
+                    : `Lost ${formatINR(myBetOnReveal.amount)}`}
+                </div>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </motion.div>
   );
 }
 
 function PhasePill({ phase }: { phase: "open" | "locked" | "settled" }) {
-  const map: Record<typeof phase, { label: string; cls: string }> = {
-    open: { label: "Betting open", cls: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30" },
-    locked: { label: "Cards opening…", cls: "bg-yellow-500/15 text-yellow-300 border-yellow-500/30" },
-    settled: { label: "Settled", cls: "bg-zinc-700/40 text-zinc-200 border-zinc-500/30" },
+  const map: Record<typeof phase, { label: string; cls: string; pulse?: boolean }> = {
+    open: { label: "Betting open", cls: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30", pulse: true },
+    locked: { label: "Cards opening…", cls: "bg-yellow-500/15 text-yellow-300 border-yellow-500/30", pulse: true },
+    settled: { label: "Result", cls: "bg-emerald-500/20 text-emerald-200 border-emerald-500/40" },
   };
   const p = map[phase];
   return (
     <span className={`inline-flex items-center gap-1.5 text-[10px] uppercase tracking-widest px-2.5 py-1 rounded-full border ${p.cls}`}>
-      <CircleDot size={10} /> {p.label}
+      <CircleDot size={10} className={p.pulse ? "animate-pulse" : ""} /> {p.label}
     </span>
   );
 }
 
 /**
- * 3-vs-3 cards animation:
- *   open    — cards float gently face-down
- *   locked  — cards shake intensely (the "shuffle" suspense beat)
- *   settled — winning side flips face-up with a 0.4s stagger between cards
- *
- * The whole component is keyed by `revealKey` from the parent so a fresh
- * round always resets the animation back to the face-down rest state.
+ * 3-vs-3 cards stage. Cards are kept big so the flip is unmissable.
+ *   open    — gentle float
+ *   locked  — vigorous shake (the "shuffle" suspense beat)
+ *   settled — winning side flips face-up with a 0.3s stagger; losing side
+ *             dims and fades back so the contrast is obvious.
  */
 function VsCards({
   phase,
@@ -561,15 +689,15 @@ function VsCards({
   const redWins = showResult && (result === "red" || result === "lucky_hit");
   const blackWins = showResult && (result === "black" || result === "lucky_hit");
   return (
-    <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 sm:gap-4">
+    <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 sm:gap-4 min-h-[120px] sm:min-h-[140px]">
       <CardRow side="red" phase={phase} winner={redWins} result={result} />
       <div className="text-center">
         <motion.div
           animate={
             phase === "locked"
-              ? { scale: [1, 1.15, 1], rotate: [-3, 3, -3] }
+              ? { scale: [1, 1.2, 1], rotate: [-3, 3, -3] }
               : phase === "settled"
-              ? { scale: [1, 1.4, 1] }
+              ? { scale: [1, 1.5, 1] }
               : { scale: 1 }
           }
           transition={{ repeat: phase === "locked" ? Infinity : 0, duration: 0.5 }}
@@ -596,7 +724,6 @@ function CardRow({
 }) {
   const isLucky = winner && result === "lucky_hit";
   const reverse = side === "black";
-
   return (
     <div className={`flex ${reverse ? "justify-end flex-row-reverse" : "justify-start"} items-center gap-1.5 sm:gap-2`}>
       {[0, 1, 2].map((i) => (
@@ -614,9 +741,14 @@ function CardRow({
 }
 
 /**
- * Single 3D-flip card. The animate prop changes per phase so framer-motion
- * smoothly drives the same element through hover → shuffle → flip — there's
- * no abrupt state swap.
+ * Single 3D-flip card with a TWO-LAYER animation:
+ *   Outer layer — handles the rotateY flip on settle. Animates ONCE per
+ *                 phase=settled so the flip is clean and predictable.
+ *   Inner layer — handles the perpetual bobbing/shuffle. Loops forever
+ *                 during open/locked and resets to neutral on settle.
+ *
+ * Splitting the two avoids framer-motion's interpolation issues when an
+ * `animate` prop switches between keyframe arrays and single values.
  */
 function FlipCard({
   index,
@@ -631,120 +763,84 @@ function FlipCard({
   winner: boolean;
   isLucky: boolean;
 }) {
-  // Phase-specific animation:
-  //   open    — gentle float (perpetual y bob)
-  //   locked  — vigorous shuffle (rotate + translate, perpetual)
-  //   settled — flip 180° on Y if this side won, else slight fade-back
-  const animate =
+  // Outer flip — only fires on settled.
+  const outerAnimate =
     phase === "settled"
       ? winner
-        ? { rotateY: 180, scale: 1.08, y: 0, rotate: 0 }
-        : { rotateY: 0, scale: 0.92, y: 0, rotate: 0, opacity: 0.55 }
-      : phase === "locked"
-      ? { rotate: [-10, 10, -10], y: [0, -6, 0], scale: [1, 1.03, 1] }
-      : { rotate: 0, y: [0, -3, 0], scale: 1 };
-
-  const transition =
+        ? { rotateY: 180, scale: 1.15 }
+        : { rotateY: 0, scale: 0.9, opacity: 0.5 }
+      : { rotateY: 0, scale: 1, opacity: 1 };
+  const outerTransition =
     phase === "settled"
-      ? // Stagger the flip so each card opens 0.4s after the previous —
-        // makes the reveal feel deliberate, not instant.
-        { duration: 0.7, delay: index * 0.4, ease: [0.2, 0.7, 0.2, 1] as const }
-      : phase === "locked"
-      ? { repeat: Infinity, duration: 0.55, delay: index * 0.07 }
-      : { repeat: Infinity, duration: 2.2, delay: index * 0.15 };
+      ? { duration: 0.7, delay: index * 0.3, ease: [0.2, 0.7, 0.2, 1] as const }
+      : { duration: 0.3 };
 
+  // Inner shake/bob — loops while not settled.
+  const innerAnimate =
+    phase === "locked"
+      ? { rotate: [-12, 12, -12], y: [0, -8, 0] }
+      : phase === "open"
+      ? { y: [0, -4, 0], rotate: 0 }
+      : { rotate: 0, y: 0 };
+  const innerTransition =
+    phase === "locked"
+      ? { repeat: Infinity, duration: 0.5, delay: index * 0.06 }
+      : phase === "open"
+      ? { repeat: Infinity, duration: 2.2, delay: index * 0.15 }
+      : { duration: 0.2 };
+
+  // Bigger cards so the flip is impossible to miss on mobile.
   return (
     <motion.div
       initial={false}
-      animate={animate}
-      transition={transition}
-      className="relative w-12 h-16 sm:w-16 sm:h-22 rounded-md sm:rounded-lg shrink-0"
-      style={{ transformStyle: "preserve-3d", perspective: 800 }}
+      animate={outerAnimate}
+      transition={outerTransition}
+      className="relative w-14 h-20 sm:w-20 sm:h-28 shrink-0"
+      style={{ transformStyle: "preserve-3d", perspective: 1000 }}
     >
-      {/* Back face (face-down) */}
-      <div
-        className="absolute inset-0 rounded-md sm:rounded-lg border shadow-md"
-        style={{
-          background:
-            side === "red"
-              ? "linear-gradient(135deg,#7f1d1d,#b91c1c 50%,#7f1d1d)"
-              : "linear-gradient(135deg,#0b0b0b,#27272a 50%,#0b0b0b)",
-          borderColor: side === "red" ? "rgba(248,113,113,0.55)" : "rgba(255,255,255,0.25)",
-          backfaceVisibility: "hidden",
-        }}
+      <motion.div
+        animate={innerAnimate}
+        transition={innerTransition}
+        className="relative w-full h-full"
+        style={{ transformStyle: "preserve-3d" }}
       >
-        <div className="absolute inset-1 rounded border border-white/10" />
-        <div className="absolute inset-0 flex items-center justify-center text-white/70 font-bold text-base sm:text-lg">
-          {side === "red" ? "R" : "B"}
+        {/* Back face (face-down) */}
+        <div
+          className="absolute inset-0 rounded-lg sm:rounded-xl border-2 shadow-xl"
+          style={{
+            background:
+              side === "red"
+                ? "linear-gradient(135deg,#7f1d1d,#dc2626 50%,#7f1d1d)"
+                : "linear-gradient(135deg,#0b0b0b,#3f3f46 50%,#0b0b0b)",
+            borderColor: side === "red" ? "rgba(248,113,113,0.7)" : "rgba(255,255,255,0.35)",
+            backfaceVisibility: "hidden",
+          }}
+        >
+          <div className="absolute inset-1.5 rounded-md border border-white/15" />
+          <div className="absolute inset-0 flex items-center justify-center text-white/80 font-bold text-2xl sm:text-3xl">
+            {side === "red" ? "R" : "B"}
+          </div>
         </div>
-      </div>
-      {/* Front face (face-up — only seen when rotateY=180) */}
-      <div
-        className="absolute inset-0 rounded-md sm:rounded-lg border flex items-center justify-center font-extrabold text-2xl sm:text-3xl shadow-lg"
-        style={{
-          background: isLucky
-            ? "linear-gradient(135deg,#fde68a,#facc15 50%,#fde68a)"
-            : side === "red"
-            ? "linear-gradient(135deg,#fecaca,#ef4444 50%,#fecaca)"
-            : "linear-gradient(135deg,#e4e4e7,#52525b 50%,#e4e4e7)",
-          borderColor: isLucky ? "#fde68a" : side === "red" ? "#fca5a5" : "#a1a1aa",
-          color: isLucky ? "#7c2d12" : side === "red" ? "#7f1d1d" : "#18181b",
-          transform: "rotateY(180deg)",
-          backfaceVisibility: "hidden",
-        }}
-      >
-        {isLucky ? "★" : side === "red" ? "R" : "B"}
-      </div>
-    </motion.div>
-  );
-}
-
-/* ================================================================ */
-/*  Result splash                                                   */
-/* ================================================================ */
-
-function ResultSplash({
-  round,
-  myBet,
-}: {
-  round: Round;
-  myBet: MyBet | null;
-}) {
-  const result = round.result!;
-  const meta = SIDE_META[result];
-  const won = myBet && myBet.side === result;
-  const titleColor =
-    result === "red" ? "text-red-300" : result === "black" ? "text-zinc-100" : "text-yellow-300";
-  return (
-    <motion.div
-      initial={{ opacity: 0, scale: 0.85, y: 20 }}
-      animate={{ opacity: 1, scale: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.95, y: -10 }}
-      transition={{ type: "spring", stiffness: 260, damping: 24 }}
-      className="fixed inset-0 z-40 flex items-start justify-center pointer-events-none px-4 pt-24 sm:pt-28"
-    >
-      <div className="glass rounded-3xl px-8 py-6 border-2 border-yellow-500/40 shadow-2xl text-center pointer-events-auto">
-        <div className={`text-xs uppercase tracking-widest opacity-80 ${titleColor}`}>
-          Period {round.period}
+        {/* Front face — shown when rotateY = 180 */}
+        <div
+          className={`absolute inset-0 rounded-lg sm:rounded-xl border-2 flex items-center justify-center font-extrabold text-3xl sm:text-5xl shadow-2xl ${
+            isLucky ? "shadow-yellow-400/60" : side === "red" ? "shadow-red-400/60" : "shadow-white/40"
+          }`}
+          style={{
+            background: isLucky
+              ? "linear-gradient(135deg,#fef3c7,#facc15 45%,#f59e0b 100%)"
+              : side === "red"
+              ? "linear-gradient(135deg,#fee2e2,#ef4444 45%,#b91c1c 100%)"
+              : "linear-gradient(135deg,#f4f4f5,#71717a 45%,#27272a 100%)",
+            borderColor: isLucky ? "#fde68a" : side === "red" ? "#fca5a5" : "#d4d4d8",
+            color: isLucky ? "#7c2d12" : side === "red" ? "#7f1d1d" : "#0f172a",
+            transform: "rotateY(180deg)",
+            backfaceVisibility: "hidden",
+          }}
+        >
+          {isLucky ? "★" : side === "red" ? "R" : "B"}
         </div>
-        <div className={`mt-1 text-3xl sm:text-4xl font-extrabold ${titleColor}`}>
-          {meta.label.toUpperCase()} {result === "lucky_hit" ? "★" : ""} WIN!
-        </div>
-        {myBet ? (
-          won ? (
-            <div className="mt-2 text-emerald-200 text-base sm:text-lg font-semibold inline-flex items-center gap-2">
-              <Trophy size={18} className="text-yellow-300" />
-              You won {formatINR(myBet.payout)}!
-            </div>
-          ) : (
-            <div className="mt-2 text-red-200 text-sm">
-              Lost {formatINR(myBet.amount)} on {SIDE_META[myBet.side].label}. Better luck next round.
-            </div>
-          )
-        ) : (
-          <div className="mt-2 text-zinc-400 text-sm">No bet this round — try the next one.</div>
-        )}
-      </div>
+      </motion.div>
     </motion.div>
   );
 }
@@ -833,6 +929,7 @@ function BetPanel({
   busy,
   onPlace,
   toast,
+  isFreezing,
 }: {
   side: Side;
   setSide: (s: Side) => void;
@@ -844,6 +941,7 @@ function BetPanel({
   busy: boolean;
   onPlace: () => void;
   toast: { kind: "ok" | "err"; msg: string } | null;
+  isFreezing: boolean;
 }) {
   const quick = [10, 50, 100, 500, 1000].filter((q) => q >= cfg.minBet && q <= cfg.maxBet);
   return (
@@ -934,6 +1032,8 @@ function BetPanel({
       >
         {busy
           ? "Placing…"
+          : isFreezing
+          ? "Showing result… next round opens shortly"
           : !canBet
           ? "Bets locked — wait for next round"
           : `Bet ${formatINR(amount)} on ${SIDE_META[side].label}`}
@@ -969,8 +1069,8 @@ function LiveBetsPanel({ bets, now }: { bets: LiveBet[]; now: number }) {
       <div className="flex items-center gap-2 text-white">
         <Users size={16} className="text-yellow-300" />
         <h3 className="font-semibold text-sm">Live bets</h3>
-        <span className="ml-auto text-[10px] uppercase tracking-widest text-yellow-400/70">
-          {bets.length}
+        <span className="ml-auto inline-flex items-center gap-1 text-[10px] uppercase tracking-widest text-emerald-300">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Live
         </span>
       </div>
       {bets.length === 0 ? (

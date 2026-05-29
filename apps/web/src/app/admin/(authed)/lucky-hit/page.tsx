@@ -10,6 +10,7 @@ import {
   History as HistoryIcon,
   Loader2,
   RefreshCw,
+  RotateCcw,
   Save,
   Sliders,
   Sparkles,
@@ -22,7 +23,7 @@ import {
 import { api, formatINR } from "@/lib/api";
 
 /* ------------------------------------------------------------------ */
-/*  Types — mirror the API responses                                   */
+/*  Types                                                              */
 /* ------------------------------------------------------------------ */
 
 type Side = "red" | "black" | "lucky_hit";
@@ -99,21 +100,24 @@ type LiveActivity = {
   withdrawals: ActivityWithdrawal[];
 };
 
-const SIDE_META: Record<Side, { label: string; chip: string; dot: string }> = {
+const SIDE_META: Record<Side, { label: string; chip: string; dot: string; bgGrad: string }> = {
   red: {
     label: "Red",
     chip: "bg-red-500/15 text-red-300 border-red-500/30",
     dot: "bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.7)]",
+    bgGrad: "from-red-500/30 to-red-700/20 border-red-400 hover:from-red-500/40",
   },
   black: {
     label: "Black",
     chip: "bg-zinc-700/40 text-zinc-200 border-zinc-500/40",
     dot: "bg-zinc-800 ring-1 ring-white/30",
+    bgGrad: "from-zinc-700/40 to-zinc-900/40 border-zinc-300 hover:from-zinc-700/60",
   },
   lucky_hit: {
-    label: "Lucky Hit",
+    label: "Lucky Hit ★",
     chip: "bg-yellow-500/15 text-yellow-300 border-yellow-500/40",
     dot: "bg-yellow-400 shadow-[0_0_8px_rgba(250,204,21,0.7)]",
+    bgGrad: "from-yellow-500/30 to-amber-600/30 border-yellow-300 hover:from-yellow-500/40",
   },
 };
 
@@ -144,6 +148,7 @@ export default function AdminLuckyHitPage() {
   const [cfg, setCfg] = useState<LuckyHitConfig | null>(null);
   const [rounds, setRounds] = useState<AdminRound[]>([]);
   const [activity, setActivity] = useState<LiveActivity | null>(null);
+  const [activityErr, setActivityErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [acting, setActing] = useState(false);
@@ -175,8 +180,11 @@ export default function AdminLuckyHitPage() {
     try {
       const r = await api<LiveActivity>("/admin/lucky-hit/live-activity?take=30");
       setActivity(r);
-    } catch {
-      /* non-fatal */
+      setActivityErr(null);
+    } catch (e) {
+      // Surface the error so admins know if the backend hasn't been migrated
+      // yet (the live-activity query selects forcedResult — fails on stale DB).
+      setActivityErr(e instanceof Error ? e.message : "Live activity unreachable");
     }
   }, []);
 
@@ -188,10 +196,9 @@ export default function AdminLuckyHitPage() {
 
   useEffect(() => {
     const t1 = setTimeout(() => { void reloadAll(); }, 0);
-    // Live activity ticks fast (2s) so the admin sees bets as they land.
-    // Rounds + config tick slower since they change less often.
-    const activityTick = setInterval(() => { void loadActivity(); }, 2000);
-    const roundsTick = setInterval(() => { void loadRounds(); }, 5000);
+    // Live activity ticks fast (1.5s) so admins see bets land in near real time.
+    const activityTick = setInterval(() => { void loadActivity(); }, 1500);
+    const roundsTick = setInterval(() => { void loadRounds(); }, 3000);
     const clockTick = setInterval(() => setNow(Date.now()), 500);
     return () => {
       clearTimeout(t1);
@@ -227,12 +234,12 @@ export default function AdminLuckyHitPage() {
   };
 
   const reset = async () => {
-    if (!confirm("Restore default Lucky Hit config?")) return;
+    if (!confirm("Restore default Lucky Hit config (15s rounds)?")) return;
     setSaving(true);
     try {
       const r = await api<{ config: LuckyHitConfig }>("/admin/lucky-hit/reset", { method: "POST" });
       setCfg(r.config);
-      flash("Defaults restored.");
+      flash("Defaults restored — 15s rounds, 5s lock.");
     } catch (e) {
       flash(null, e instanceof Error ? e.message : "Reset failed");
     } finally {
@@ -240,11 +247,6 @@ export default function AdminLuckyHitPage() {
     }
   };
 
-  /**
-   * Force the current round's result. The admin clicks Red / Black / Lucky —
-   * the round keeps running normally, but settlement uses the forced value
-   * instead of RNG.
-   */
   const forceResult = async (roundId: string, result: Side | null) => {
     setActing(true);
     try {
@@ -254,7 +256,7 @@ export default function AdminLuckyHitPage() {
       });
       flash(
         result
-          ? `Locked: round will resolve as ${SIDE_META[result].label}.`
+          ? `Forced: round will resolve as ${SIDE_META[result].label}.`
           : "Override cleared — round will use RNG."
       );
       void loadActivity();
@@ -266,19 +268,15 @@ export default function AdminLuckyHitPage() {
     }
   };
 
-  /**
-   * Settle the current round immediately with a chosen result. Used when the
-   * admin wants to "open the cards now" — bypasses the remaining countdown.
-   */
   const settleNow = async (roundId: string, result: Side) => {
-    if (!confirm(`Open the cards NOW with ${SIDE_META[result].label}? All bets on this round will settle immediately.`)) return;
+    if (!confirm(`Open the cards NOW with ${SIDE_META[result].label}? All bets on this round settle immediately and wallets get credited.`)) return;
     setActing(true);
     try {
       await api(`/admin/lucky-hit/rounds/${roundId}/settle-now`, {
         method: "POST",
         body: JSON.stringify({ result }),
       });
-      flash(`Settled now as ${SIDE_META[result].label}. Wallets credited.`);
+      flash(`Settled now as ${SIDE_META[result].label}. Winners credited.`);
       void loadActivity();
       void loadRounds();
     } catch (e) {
@@ -302,8 +300,6 @@ export default function AdminLuckyHitPage() {
 
   const currentRound = activity?.currentRound ?? null;
 
-  /* ----- render ---------------------------------------------------- */
-
   if (!cfg) {
     return (
       <div className="max-w-3xl mx-auto p-10 text-center text-zinc-400 text-sm">
@@ -318,13 +314,14 @@ export default function AdminLuckyHitPage() {
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <div className="flex items-center gap-2 text-xs uppercase tracking-widest text-yellow-400/80">
-            <Dices size={12} /> Lucky Hit Game
+            <Dices size={12} /> Lucky Hit Game · Admin
           </div>
           <h1 className="mt-1 text-2xl sm:text-3xl font-semibold text-white">
-            Live activity, odds & manual controls
+            Live activity, manual control & odds
           </h1>
           <p className="mt-1 text-sm text-zinc-400 max-w-2xl">
-            Watch bets, deposits, and withdrawals stream in. Force the result of any active round, or open the cards immediately when you need to.
+            Watch every bet, deposit, and withdrawal in real time. Force the
+            result of any active round, or open the cards immediately.
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -339,8 +336,15 @@ export default function AdminLuckyHitPage() {
 
       {okMsg && <div className="glass rounded-xl px-4 py-2 text-emerald-300 text-sm">{okMsg}</div>}
       {error && <div className="glass rounded-xl px-4 py-2 text-red-300 text-sm">{error}</div>}
+      {activityErr && (
+        <div className="rounded-xl border border-yellow-500/40 bg-yellow-500/10 px-4 py-2 text-yellow-200 text-xs">
+          ⚠ Live activity API: {activityErr} — typically means the database migration hasn&rsquo;t run yet on the API server. Trigger a redeploy or `npx prisma migrate deploy`.
+        </div>
+      )}
 
-      {/* ─── Force result + settle now (current round) ─── */}
+      {/* ═══════════════════════════════════════════════════════════════ */}
+      {/* SECTION 1 — Manual round control (LOUD, top of page)           */}
+      {/* ═══════════════════════════════════════════════════════════════ */}
       <ForceResultPanel
         round={currentRound}
         onForce={forceResult}
@@ -348,10 +352,18 @@ export default function AdminLuckyHitPage() {
         busy={acting}
       />
 
-      {/* ─── Live activity (3-column on lg) ─── */}
-      <LiveActivitySection activity={activity} now={now} />
+      {/* ═══════════════════════════════════════════════════════════════ */}
+      {/* SECTION 2 — Live activity (also LOUD, three-column live feed)  */}
+      {/* ═══════════════════════════════════════════════════════════════ */}
+      <LiveActivitySection activity={activity} now={now} hasError={!!activityErr} />
 
-      {/* ─── Config: switches & bounds ─── */}
+      {/* ═══════════════════════════════════════════════════════════════ */}
+      {/* SECTION 3 — Config (lower priority, edit-and-save)              */}
+      {/* ═══════════════════════════════════════════════════════════════ */}
+      <div className="border-t border-yellow-500/10 pt-2 mt-4 text-xs uppercase tracking-widest text-yellow-400/60">
+        Game configuration
+      </div>
+
       <section className="glass rounded-2xl p-5">
         <div className="flex items-start justify-between gap-3 flex-wrap mb-4">
           <div className="flex items-center gap-2 text-white">
@@ -378,13 +390,13 @@ export default function AdminLuckyHitPage() {
             min={20}
             max={1800}
             int
-            help="Default 30 — gives ~15s bet + 15s reveal"
+            help="Default 15 — gives ~10s bet + 5s reveal"
           />
           <NumField
             label="Lock window (sec)"
             value={cfg.lockSeconds}
             onChange={(v) => setCfg({ ...cfg, lockSeconds: v })}
-            min={5}
+            min={3}
             max={300}
             int
             help="Last N sec where cards animate"
@@ -392,7 +404,6 @@ export default function AdminLuckyHitPage() {
         </div>
       </section>
 
-      {/* ─── Payouts ─── */}
       <section className="glass rounded-2xl p-5">
         <div className="flex items-center gap-2 text-white mb-4">
           <Trophy size={18} className="text-yellow-300" />
@@ -404,7 +415,6 @@ export default function AdminLuckyHitPage() {
         </div>
       </section>
 
-      {/* ─── Probabilities (RNG fallback) ─── */}
       <section className="glass rounded-2xl p-5">
         <div className="flex items-start justify-between gap-3 flex-wrap mb-4">
           <div>
@@ -414,7 +424,6 @@ export default function AdminLuckyHitPage() {
             </div>
             <p className="mt-1 text-xs text-zinc-400 max-w-xl">
               Used when no admin override is set on a round. Higher weight = higher chance.
-              Live percentage column shows what users will experience.
             </p>
           </div>
         </div>
@@ -425,10 +434,9 @@ export default function AdminLuckyHitPage() {
         </div>
       </section>
 
-      {/* Save / reset bar */}
       <div className="flex items-center gap-2 flex-wrap sticky bottom-2 z-10">
-        <button onClick={reset} className="rounded-lg border border-yellow-500/20 px-3 py-2 text-sm text-zinc-300 hover:bg-yellow-500/10">
-          Reset to defaults
+        <button onClick={reset} className="rounded-lg border border-yellow-500/20 px-3 py-2 text-sm text-zinc-300 hover:bg-yellow-500/10 inline-flex items-center gap-2">
+          <RotateCcw size={14} /> Reset to defaults
         </button>
         <button
           onClick={save}
@@ -440,12 +448,11 @@ export default function AdminLuckyHitPage() {
         </button>
       </div>
 
-      {/* ─── Recent rounds ─── */}
       <section className="glass rounded-2xl p-5">
         <div className="flex items-center gap-2 text-white mb-4">
           <HistoryIcon size={18} className="text-yellow-300" />
           <h2 className="font-semibold text-lg">Recent rounds</h2>
-          <span className="text-xs text-zinc-500">(auto-refreshing every 5s)</span>
+          <span className="text-xs text-zinc-500">(refreshing every 3s)</span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -487,17 +494,12 @@ export default function AdminLuckyHitPage() {
           </table>
         </div>
       </section>
-
-      <style jsx>{`
-        .input { background: rgba(0,0,0,0.35); border: 1px solid rgba(255,215,0,0.2); color: white; border-radius: 10px; padding: 0.5rem 0.6rem; font-size: 0.875rem; outline: none; width: 100%; }
-        .input:focus { border-color: rgba(255,215,0,0.55); }
-      `}</style>
     </div>
   );
 }
 
 /* ================================================================ */
-/*  Force-result + settle-now                                       */
+/*  Force-result + settle-now (LOUD prominent panel)                */
 /* ================================================================ */
 
 function ForceResultPanel({
@@ -511,156 +513,181 @@ function ForceResultPanel({
   onSettleNow: (roundId: string, result: Side) => void;
   busy: boolean;
 }) {
-  if (!round) {
-    return (
-      <section className="glass rounded-2xl p-5 border border-yellow-500/20">
-        <div className="flex items-center gap-2 text-white">
-          <Wand2 size={18} className="text-yellow-300" />
-          <h2 className="font-semibold text-lg">Manual round control</h2>
-        </div>
-        <p className="mt-2 text-sm text-zinc-400">No active round yet — waiting for first state read.</p>
-      </section>
-    );
-  }
-  const settled = round.status === "settled";
   return (
     <motion.section
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
-      className="glass rounded-2xl p-5 border border-yellow-500/30"
+      className="rounded-3xl border-2 border-yellow-400/60 bg-gradient-to-br from-yellow-500/10 via-yellow-500/5 to-amber-500/5 p-5 sm:p-6 shadow-2xl shadow-yellow-500/10 backdrop-blur"
     >
       <div className="flex items-start justify-between gap-3 flex-wrap mb-4">
         <div>
-          <div className="flex items-center gap-2 text-white">
-            <Wand2 size={18} className="text-yellow-300" />
-            <h2 className="font-semibold text-lg">Manual round control</h2>
+          <div className="flex items-center gap-2">
+            <Wand2 size={20} className="text-yellow-300" />
+            <h2 className="font-extrabold text-xl text-yellow-100 tracking-wide">MANUAL ROUND CONTROL</h2>
+            <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-widest px-2 py-0.5 rounded-full bg-yellow-400/20 border border-yellow-400/50 text-yellow-200">
+              Admin only
+            </span>
           </div>
-          <p className="mt-1 text-xs text-zinc-400 max-w-xl">
-            Force the result of the current round, or open the cards immediately. Forced results take priority over RNG.
+          <p className="mt-1 text-sm text-yellow-100/80 max-w-2xl">
+            Force the result of the live round, or open the cards immediately on a side of your choice.
           </p>
         </div>
-        <div className="text-right">
-          <div className="text-[10px] uppercase tracking-widest text-zinc-400">Current period</div>
-          <div className="font-mono font-semibold text-white">{round.period}</div>
-          <div className="mt-1"><StatusPill status={round.status} /></div>
-        </div>
+        {round && (
+          <div className="text-right">
+            <div className="text-[10px] uppercase tracking-widest text-yellow-300/80">Current period</div>
+            <div className="font-mono font-bold text-white text-lg">{round.period}</div>
+            <div className="mt-1"><StatusPill status={round.status} /></div>
+          </div>
+        )}
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 mb-4">
-        <div className="rounded-xl border border-yellow-500/15 bg-black/30 p-3">
-          <div className="text-[10px] uppercase tracking-widest text-zinc-400">Currently forced</div>
-          <div className="mt-1">
-            {round.forcedResult ? (
-              <ResultPill result={round.forcedResult} />
-            ) : (
-              <span className="text-zinc-500 text-sm">— RNG will decide —</span>
-            )}
-          </div>
+      {!round ? (
+        <div className="rounded-xl border border-yellow-500/20 bg-black/30 p-4 text-sm text-zinc-400">
+          Waiting for the first round to spawn — open the user page once or send a request to <code className="text-yellow-200">/lucky-hit/state</code> to bootstrap a round.
         </div>
-        <div className="rounded-xl border border-yellow-500/15 bg-black/30 p-3">
-          <div className="text-[10px] uppercase tracking-widest text-zinc-400">Live pools</div>
-          <div className="mt-1 text-sm text-zinc-200 flex flex-wrap gap-3">
-            <span className="text-red-300">Red {formatINR(round.redTotal)}</span>
-            <span className="text-zinc-200">Black {formatINR(round.blackTotal)}</span>
-            <span className="text-yellow-300">Lucky {formatINR(round.luckyHitTotal)}</span>
-            <span className="text-zinc-400">· {round.betCount} bets</span>
+      ) : (
+        <>
+          {/* Status + pools snapshot */}
+          <div className="grid gap-3 sm:grid-cols-2 mb-5">
+            <div className="rounded-xl border border-yellow-500/20 bg-black/40 p-3">
+              <div className="text-[10px] uppercase tracking-widest text-zinc-400">Currently forced</div>
+              <div className="mt-1">
+                {round.forcedResult ? (
+                  <ResultPill result={round.forcedResult} />
+                ) : (
+                  <span className="text-zinc-500 text-sm">— RNG will decide —</span>
+                )}
+              </div>
+            </div>
+            <div className="rounded-xl border border-yellow-500/20 bg-black/40 p-3">
+              <div className="text-[10px] uppercase tracking-widest text-zinc-400">Live pools · {round.betCount} bets</div>
+              <div className="mt-1 text-sm text-zinc-200 flex flex-wrap gap-3">
+                <span className="text-red-300">Red {formatINR(round.redTotal)}</span>
+                <span className="text-zinc-200">Black {formatINR(round.blackTotal)}</span>
+                <span className="text-yellow-300">Lucky {formatINR(round.luckyHitTotal)}</span>
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
 
-      {/* Force result row */}
-      <div className="grid gap-3">
-        <div>
-          <div className="text-xs text-zinc-400 mb-2 uppercase tracking-widest font-semibold">Force result for this round</div>
-          <div className="flex flex-wrap gap-2">
-            {SIDES.map((s) => {
-              const meta = SIDE_META[s];
-              const active = round.forcedResult === s;
-              return (
+          {/* Force result row */}
+          <div className="grid gap-4">
+            <div>
+              <div className="text-xs text-yellow-200/80 mb-2 uppercase tracking-widest font-semibold">
+                Step 1 — Force result for this round
+              </div>
+              <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap">
+                {SIDES.map((s) => {
+                  const meta = SIDE_META[s];
+                  const active = round.forcedResult === s;
+                  return (
+                    <motion.button
+                      key={s}
+                      whileTap={{ scale: 0.96 }}
+                      onClick={() => onForce(round.id, s)}
+                      disabled={busy || round.status === "settled"}
+                      className={`flex-1 sm:flex-none inline-flex items-center justify-center gap-2 rounded-xl border-2 bg-gradient-to-br px-4 py-3 text-sm font-bold text-white transition disabled:opacity-50 ${meta.bgGrad} ${
+                        active ? "ring-4 ring-yellow-300 shadow-lg shadow-yellow-300/40" : ""
+                      }`}
+                    >
+                      <span className={`inline-block w-2.5 h-2.5 rounded-full ${meta.dot}`} />
+                      Force {meta.label}
+                    </motion.button>
+                  );
+                })}
                 <button
-                  key={s}
-                  onClick={() => onForce(round.id, s)}
-                  disabled={busy || settled}
-                  className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition disabled:opacity-50 ${
-                    active ? meta.chip + " ring-2 ring-yellow-400/60" : meta.chip
-                  } hover:brightness-110`}
+                  onClick={() => onForce(round.id, null)}
+                  disabled={busy || round.status === "settled" || !round.forcedResult}
+                  className="rounded-xl border border-zinc-500/40 bg-zinc-700/30 px-4 py-3 text-sm text-zinc-200 hover:bg-zinc-700/50 disabled:opacity-50 inline-flex items-center gap-1.5"
                 >
-                  <span className={`inline-block w-2.5 h-2.5 rounded-full ${meta.dot}`} />
-                  Force {meta.label}
+                  <RotateCcw size={14} /> Clear
                 </button>
-              );
-            })}
-            <button
-              onClick={() => onForce(round.id, null)}
-              disabled={busy || settled || !round.forcedResult}
-              className="inline-flex items-center gap-2 rounded-lg border border-zinc-500/40 bg-zinc-700/30 px-3 py-2 text-sm text-zinc-200 hover:bg-zinc-700/50 disabled:opacity-50"
-            >
-              Clear override
-            </button>
-          </div>
-        </div>
+              </div>
+              <p className="mt-2 text-[11px] text-yellow-200/60">
+                Round keeps running normally until its endsAt — the forced value just replaces the RNG at settlement.
+              </p>
+            </div>
 
-        <div>
-          <div className="text-xs text-zinc-400 mb-2 uppercase tracking-widest font-semibold">Open cards NOW (settle immediately)</div>
-          <div className="flex flex-wrap gap-2">
-            {SIDES.map((s) => {
-              const meta = SIDE_META[s];
-              return (
-                <button
-                  key={s}
-                  onClick={() => onSettleNow(round.id, s)}
-                  disabled={busy || settled}
-                  className="inline-flex items-center gap-2 rounded-lg border border-yellow-500/30 bg-[var(--primary)]/15 hover:bg-[var(--primary)]/25 px-3 py-2 text-sm font-semibold text-yellow-100 disabled:opacity-50"
-                >
-                  <Zap size={14} />
-                  <span className={`inline-block w-2.5 h-2.5 rounded-full ${meta.dot}`} />
-                  {meta.label}
-                </button>
-              );
-            })}
+            <div>
+              <div className="text-xs text-yellow-200/80 mb-2 uppercase tracking-widest font-semibold inline-flex items-center gap-1.5">
+                <Zap size={12} className="text-yellow-300" /> Step 2 — OPEN CARDS NOW (instant settle)
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                {SIDES.map((s) => {
+                  const meta = SIDE_META[s];
+                  return (
+                    <motion.button
+                      key={s}
+                      whileTap={{ scale: 0.96 }}
+                      onClick={() => onSettleNow(round.id, s)}
+                      disabled={busy || round.status === "settled"}
+                      className={`inline-flex items-center justify-center gap-2 rounded-xl border-2 bg-gradient-to-br px-4 py-4 text-base font-extrabold text-white transition disabled:opacity-50 ${meta.bgGrad}`}
+                    >
+                      <Zap size={16} />
+                      {meta.label}
+                    </motion.button>
+                  );
+                })}
+              </div>
+              <p className="mt-2 text-[11px] text-yellow-200/60">
+                Wallets are credited immediately for every winning bet. Use only when you need to short-circuit the timer.
+              </p>
+            </div>
           </div>
-          <p className="mt-2 text-[11px] text-zinc-500">
-            Wallets are credited immediately for winning bets. Use this only when you need to short-circuit the timer.
-          </p>
-        </div>
-      </div>
+        </>
+      )}
     </motion.section>
   );
 }
 
 /* ================================================================ */
-/*  Live activity panel — bets / wins-losses / deposits / withdraws */
+/*  Live activity panel                                             */
 /* ================================================================ */
 
 function LiveActivitySection({
   activity,
   now,
+  hasError,
 }: {
   activity: LiveActivity | null;
   now: number;
+  hasError: boolean;
 }) {
   return (
-    <section className="glass rounded-2xl p-5">
-      <div className="flex items-center gap-2 text-white mb-4">
-        <Activity size={18} className="text-yellow-300" />
-        <h2 className="font-semibold text-lg">Live activity</h2>
-        <span className="text-xs text-zinc-500">(refreshing every 2s)</span>
+    <section className="rounded-3xl border-2 border-emerald-500/30 bg-gradient-to-br from-emerald-500/5 to-zinc-900/40 p-5 sm:p-6 shadow-xl shadow-emerald-500/5">
+      <div className="flex items-center gap-2 mb-4">
+        <Activity size={20} className="text-emerald-300" />
+        <h2 className="font-extrabold text-xl text-emerald-100 tracking-wide">LIVE ACTIVITY</h2>
+        <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-widest px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-200">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Live
+        </span>
+        <span className="ml-auto text-xs text-zinc-500">refreshing every 1.5s</span>
       </div>
-      {!activity ? (
+
+      {hasError && !activity ? (
+        <div className="text-sm text-red-300 py-8 text-center">Live activity API is unreachable. Check API logs.</div>
+      ) : !activity ? (
         <div className="text-sm text-zinc-500 py-8 text-center">Waiting for first poll…</div>
       ) : (
         <div className="grid gap-4 lg:grid-cols-3">
-          <ActivityColumn title="Bets" icon={<Sparkles size={14} className="text-yellow-300" />} count={activity.bets.length}>
+          <ActivityColumn
+            title="Bets being placed"
+            icon={<Sparkles size={14} className="text-yellow-300" />}
+            count={activity.bets.length}
+            tone="yellow"
+          >
             {activity.bets.length === 0 && <EmptyHint text="No bets yet" />}
             {activity.bets.map((b) => (
               <BetRow key={b.id} bet={b} now={now} />
             ))}
           </ActivityColumn>
 
-          <ActivityColumn title="Wins / Losses" icon={<Trophy size={14} className="text-yellow-300" />} count={activity.bets.filter((b) => b.status !== "pending").length}>
-            {activity.bets.filter((b) => b.status !== "pending").length === 0 && (
-              <EmptyHint text="No settled bets yet" />
-            )}
+          <ActivityColumn
+            title="Wins / Losses"
+            icon={<Trophy size={14} className="text-emerald-300" />}
+            count={activity.bets.filter((b) => b.status !== "pending").length}
+            tone="emerald"
+          >
+            {activity.bets.filter((b) => b.status !== "pending").length === 0 && <EmptyHint text="No settled bets yet" />}
             {activity.bets
               .filter((b) => b.status !== "pending")
               .slice(0, 20)
@@ -669,14 +696,29 @@ function LiveActivitySection({
               ))}
           </ActivityColumn>
 
-          <ActivityColumn title="Money flow" icon={<WalletIcon size={14} className="text-yellow-300" />} count={activity.deposits.length + activity.withdrawals.length}>
+          <ActivityColumn
+            title="Deposits / Withdrawals"
+            icon={<WalletIcon size={14} className="text-sky-300" />}
+            count={activity.deposits.length + activity.withdrawals.length}
+            tone="sky"
+          >
             {activity.deposits.length + activity.withdrawals.length === 0 && (
-              <EmptyHint text="No deposits or withdrawals yet" />
+              <EmptyHint text="No money flow yet" />
             )}
-            {/* Interleave deposits + withdrawals by timestamp so the column reads
-                like a single chronological feed of money movement. */}
-            {[...activity.deposits.map((d) => ({ kind: "deposit" as const, t: d.createdAt, d, w: null as ActivityWithdrawal | null })),
-              ...activity.withdrawals.map((w) => ({ kind: "withdraw" as const, t: w.createdAt, d: null as ActivityDeposit | null, w }))]
+            {[
+              ...activity.deposits.map((d) => ({
+                kind: "deposit" as const,
+                t: d.createdAt,
+                d,
+                w: null as ActivityWithdrawal | null,
+              })),
+              ...activity.withdrawals.map((w) => ({
+                kind: "withdraw" as const,
+                t: w.createdAt,
+                d: null as ActivityDeposit | null,
+                w,
+              })),
+            ]
               .sort((a, b) => new Date(b.t).getTime() - new Date(a.t).getTime())
               .slice(0, 20)
               .map((row) =>
@@ -697,15 +739,23 @@ function ActivityColumn({
   title,
   icon,
   count,
+  tone,
   children,
 }: {
   title: string;
   icon: React.ReactNode;
   count: number;
+  tone: "yellow" | "emerald" | "sky";
   children: React.ReactNode;
 }) {
+  const toneCls =
+    tone === "yellow"
+      ? "border-yellow-500/30 bg-yellow-500/5"
+      : tone === "emerald"
+      ? "border-emerald-500/30 bg-emerald-500/5"
+      : "border-sky-500/30 bg-sky-500/5";
   return (
-    <div className="rounded-2xl border border-yellow-500/15 bg-black/30 p-3">
+    <div className={`rounded-2xl border ${toneCls} p-3`}>
       <div className="flex items-center gap-2 mb-2">
         {icon}
         <div className="text-sm font-semibold text-white">{title}</div>
@@ -726,9 +776,7 @@ function BetRow({ bet, now }: { bet: ActivityBet; now: number }) {
     <li className="rounded-lg border border-white/5 bg-zinc-900/40 px-2.5 py-2 flex items-center gap-2">
       <span className={`inline-block w-2.5 h-2.5 rounded-full ${meta.dot} shrink-0`} />
       <div className="flex-1 min-w-0">
-        <div className="text-xs text-zinc-200 truncate">
-          {bet.userLabel || "—"}
-        </div>
+        <div className="text-xs text-zinc-200 truncate">{bet.userLabel || "—"}</div>
         <div className="text-[10px] text-zinc-500 font-mono">{bet.period} · {timeAgo(bet.createdAt, now)}</div>
       </div>
       <div className="text-right">
@@ -747,7 +795,7 @@ function WinLossRow({ bet, now }: { bet: ActivityBet; now: number }) {
   const won = bet.status === "won";
   return (
     <li className={`rounded-lg border px-2.5 py-2 flex items-center gap-2 ${
-      won ? "border-emerald-500/30 bg-emerald-500/5" : "border-red-500/20 bg-red-500/5"
+      won ? "border-emerald-500/30 bg-emerald-500/10" : "border-red-500/20 bg-red-500/5"
     }`}>
       {won ? <CheckCircle2 size={14} className="text-emerald-300 shrink-0" /> : <XCircle size={14} className="text-red-300 shrink-0" />}
       <div className="flex-1 min-w-0">
@@ -755,7 +803,7 @@ function WinLossRow({ bet, now }: { bet: ActivityBet; now: number }) {
         <div className="text-[10px] text-zinc-500 font-mono">{bet.period} · {timeAgo(bet.createdAt, now)}</div>
       </div>
       <div className="text-right">
-        <div className={`text-sm font-semibold tabular-nums ${won ? "text-emerald-200" : "text-red-200"}`}>
+        <div className={`text-sm font-bold tabular-nums ${won ? "text-emerald-200" : "text-red-200"}`}>
           {won ? `+${formatINR(bet.payout)}` : `-${formatINR(bet.amount)}`}
         </div>
         <div className="text-[10px] uppercase tracking-widest text-zinc-400">
@@ -769,14 +817,14 @@ function WinLossRow({ bet, now }: { bet: ActivityBet; now: number }) {
 
 function DepositRow({ dep, now }: { dep: ActivityDeposit; now: number }) {
   return (
-    <li className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-2.5 py-2 flex items-center gap-2">
+    <li className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-2 flex items-center gap-2">
       <ArrowDownToLine size={14} className="text-emerald-300 shrink-0" />
       <div className="flex-1 min-w-0">
         <div className="text-xs text-zinc-200 truncate">{dep.userLabel || "—"}</div>
         <div className="text-[10px] text-zinc-500">{dep.method} · {timeAgo(dep.createdAt, now)}</div>
       </div>
       <div className="text-right">
-        <div className="text-sm font-semibold text-emerald-200 tabular-nums">+{formatINR(dep.amount)}</div>
+        <div className="text-sm font-bold text-emerald-200 tabular-nums">+{formatINR(dep.amount)}</div>
         <div className={`text-[10px] uppercase tracking-widest ${
           dep.status === "approved" ? "text-emerald-300" : dep.status === "rejected" ? "text-red-300" : "text-yellow-300"
         }`}>
@@ -796,7 +844,7 @@ function WithdrawRow({ wd, now }: { wd: ActivityWithdrawal; now: number }) {
         <div className="text-[10px] text-zinc-500">{wd.method} · net {formatINR(wd.netAmount)} · {timeAgo(wd.createdAt, now)}</div>
       </div>
       <div className="text-right">
-        <div className="text-sm font-semibold text-red-200 tabular-nums">-{formatINR(wd.amount)}</div>
+        <div className="text-sm font-bold text-red-200 tabular-nums">-{formatINR(wd.amount)}</div>
         <div className={`text-[10px] uppercase tracking-widest ${
           wd.status === "approved" || wd.status === "paid" ? "text-emerald-300" : wd.status === "rejected" ? "text-red-300" : "text-yellow-300"
         }`}>
