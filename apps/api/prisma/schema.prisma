@@ -286,6 +286,10 @@ model LuckyHitRound {
   status         String   @default("open")
   /// Final result once settled. One of: "red" | "black" | "lucky_hit". Null while open/locked.
   result         String?
+  /// Admin override — when set on a non-settled round, settlement uses this
+  /// instead of the weighted RNG. Cleared automatically once the round settles
+  /// (the value is preserved on the round row for audit; just not consulted again).
+  forcedResult   String?
   settledAt      DateTime?
   /// Live aggregates updated on every successful bet (also used by the score panel UI).
   redTotal       Decimal  @default(0)
