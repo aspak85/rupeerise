@@ -144,7 +144,7 @@ app.listen(port, async () => {
     // until next redeploy (intentional — operator wants 15s hard-coded).
     const { setLuckyHitConfig, DEFAULT_LUCKY_HIT_CONFIG } = await import('./lib/appSettings.js');
     await setLuckyHitConfig(DEFAULT_LUCKY_HIT_CONFIG);
-    console.log('[boot] seeded plans + channels + admin + lucky-hit 15s config');
+    console.log('[boot] seeded plans + channels + admin + lucky-hit 20s config');
   } catch (e) {
     console.warn('[boot] seed skipped:', (e as Error).message);
   }
