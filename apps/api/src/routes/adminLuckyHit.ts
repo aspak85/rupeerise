@@ -8,7 +8,7 @@ import {
   DEFAULT_LUCKY_HIT_CONFIG,
   type LuckyHitConfig,
 } from '../lib/appSettings';
-import { settleExpiredRounds } from '../lib/luckyHit';
+import { settleExpiredRounds, getOrCreateCurrentRound } from '../lib/luckyHit';
 
 const router = Router();
 router.use(requireAuth, requireAdmin);
@@ -149,6 +149,194 @@ router.get('/rounds/:id/bets', async (req, res) => {
   } catch (e) {
     console.error(e);
     return res.status(503).json({ error: 'Failed to load bets' });
+  }
+});
+
+/**
+ * POST /admin/lucky-hit/rounds/:id/force-result
+ *   body: { result: "red" | "black" | "lucky_hit" | null }
+ * Sets (or clears) the admin-forced result on a round that hasn't settled
+ * yet. When that round naturally ends, settlement uses this value instead
+ * of the weighted RNG. The forced value is stored on the round row for
+ * audit even after settlement (it's just no longer consulted).
+ */
+router.post('/rounds/:id/force-result', async (req, res) => {
+  try {
+    const id = String(req.params.id || '').trim();
+    if (!id) return res.status(400).json({ error: 'id required' });
+    const raw = req.body?.result;
+    const result =
+      raw === null || raw === '' || raw === undefined
+        ? null
+        : String(raw).trim().toLowerCase();
+    if (result !== null && !['red', 'black', 'lucky_hit'].includes(result)) {
+      return res.status(400).json({ error: 'result must be red, black, lucky_hit, or null' });
+    }
+    const round = await prisma.luckyHitRound.findUnique({ where: { id } });
+    if (!round) return res.status(404).json({ error: 'Round not found' });
+    if (round.status === 'settled') {
+      return res.status(400).json({ error: 'Round already settled — override would be ignored' });
+    }
+    const updated = await prisma.luckyHitRound.update({
+      where: { id },
+      data: { forcedResult: result },
+    });
+    return res.json({
+      ok: true,
+      roundId: updated.id,
+      period: updated.period,
+      forcedResult: updated.forcedResult,
+    });
+  } catch (e) {
+    console.error(e);
+    return res.status(503).json({ error: 'Force-result failed' });
+  }
+});
+
+/**
+ * POST /admin/lucky-hit/rounds/:id/settle-now
+ *   body: { result?: "red" | "black" | "lucky_hit" }
+ * Ends a round immediately. If `result` is provided it's stored as the
+ * forced result first; otherwise an existing forced result (or RNG) decides
+ * the outcome. Used when the admin wants to "open the cards" right now —
+ * the matching `endsAt` rewrite causes `settleExpiredRounds()` to settle
+ * this round on the same request.
+ */
+router.post('/rounds/:id/settle-now', async (req, res) => {
+  try {
+    const id = String(req.params.id || '').trim();
+    if (!id) return res.status(400).json({ error: 'id required' });
+    const raw = req.body?.result;
+    const result =
+      raw === null || raw === '' || raw === undefined
+        ? null
+        : String(raw).trim().toLowerCase();
+    if (result !== null && !['red', 'black', 'lucky_hit'].includes(result)) {
+      return res.status(400).json({ error: 'result must be red, black, lucky_hit, or null' });
+    }
+    const round = await prisma.luckyHitRound.findUnique({ where: { id } });
+    if (!round) return res.status(404).json({ error: 'Round not found' });
+    if (round.status === 'settled') {
+      return res.status(400).json({ error: 'Round already settled' });
+    }
+    // Force the round into the "expired" zone and (optionally) override the
+    // result. The 1-second offset guarantees `endsAt < now` even on clock
+    // skew between the API box and the DB.
+    await prisma.luckyHitRound.update({
+      where: { id },
+      data: {
+        endsAt: new Date(Date.now() - 1000),
+        ...(result ? { forcedResult: result } : {}),
+      },
+    });
+    await settleExpiredRounds();
+    const after = await prisma.luckyHitRound.findUnique({ where: { id } });
+    return res.json({
+      ok: true,
+      round: after && {
+        id: after.id,
+        period: after.period,
+        status: after.status,
+        result: after.result,
+        forcedResult: after.forcedResult,
+        settledAt: after.settledAt,
+      },
+    });
+  } catch (e) {
+    console.error(e);
+    return res.status(503).json({ error: 'Settle-now failed' });
+  }
+});
+
+/**
+ * GET /admin/lucky-hit/live-activity — combined stream the admin "Live
+ * Activity" panel polls every few seconds. Bundles current round + recent
+ * bets + recent deposits + recent withdrawals so the UI only needs one
+ * endpoint to keep the dashboard live.
+ *
+ * Query: ?take=N (default 30, max 100) caps every list independently.
+ */
+router.get('/live-activity', async (req, res) => {
+  try {
+    const take = Math.min(100, Math.max(5, Number(req.query?.take) || 30));
+    // Always settle first so just-finished rounds appear with their results.
+    await settleExpiredRounds();
+    const [{ round: current }, bets, deposits, withdrawals] = await Promise.all([
+      getOrCreateCurrentRound(),
+      prisma.luckyHitBet.findMany({
+        orderBy: { createdAt: 'desc' },
+        take,
+        include: {
+          Round: {
+            select: { period: true, result: true, status: true, forcedResult: true },
+          },
+        },
+      }),
+      prisma.deposit.findMany({ orderBy: { createdAt: 'desc' }, take }),
+      prisma.withdrawal.findMany({ orderBy: { createdAt: 'desc' }, take }),
+    ]);
+
+    // Resolve user emails for the activity rows in one shot.
+    const userIds = new Set<string>();
+    for (const b of bets) userIds.add(b.userId);
+    for (const d of deposits) userIds.add(d.userId);
+    for (const w of withdrawals) userIds.add(w.userId);
+    const users = userIds.size
+      ? await prisma.user.findMany({
+          where: { id: { in: Array.from(userIds) } },
+          select: { id: true, email: true, firstName: true, lastName: true },
+        })
+      : [];
+    const byId = new Map(users.map((u) => [u.id, u]));
+    const labelFor = (uid: string) => {
+      const u = byId.get(uid);
+      if (!u) return null;
+      const name = [u.firstName, u.lastName].filter(Boolean).join(' ').trim();
+      return name || u.email.split('@')[0];
+    };
+
+    return res.json({
+      currentRound: current,
+      bets: bets.map((b) => ({
+        id: b.id,
+        createdAt: b.createdAt,
+        userId: b.userId,
+        userLabel: labelFor(b.userId),
+        userEmail: byId.get(b.userId)?.email || null,
+        side: b.side,
+        amount: Number(b.amount),
+        status: b.status,
+        payout: Number(b.payout),
+        walletSource: b.walletSource,
+        period: b.Round.period,
+        roundStatus: b.Round.status,
+        roundResult: b.Round.result,
+        forcedResult: b.Round.forcedResult,
+      })),
+      deposits: deposits.map((d) => ({
+        id: d.id,
+        createdAt: d.createdAt,
+        userId: d.userId,
+        userLabel: labelFor(d.userId),
+        amount: Number(d.amount),
+        method: d.method,
+        utr: d.utr,
+        status: d.status,
+      })),
+      withdrawals: withdrawals.map((w) => ({
+        id: w.id,
+        createdAt: w.createdAt,
+        userId: w.userId,
+        userLabel: labelFor(w.userId),
+        amount: Number(w.amount),
+        netAmount: Number(w.netAmount),
+        method: w.method,
+        status: w.status,
+      })),
+    });
+  } catch (e) {
+    console.error(e);
+    return res.status(503).json({ error: 'Live activity unavailable' });
   }
 });
 

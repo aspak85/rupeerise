@@ -198,8 +198,10 @@ export const DEFAULT_LUCKY_HIT_CONFIG: LuckyHitConfig = {
   enabled: true,
   minBet: 10,
   maxBet: 5000,
-  roundDurationSec: 180,
-  lockSeconds: 30,
+  // Fast cadence — 30s total round means 15s of betting + 15s of card-flip
+  // reveal, which is what the operator asked for. Admin can still tune this.
+  roundDurationSec: 30,
+  lockSeconds: 15,
   colorPayout: 1.9,
   luckyHitPayout: 9,
   redWeight: 47,
