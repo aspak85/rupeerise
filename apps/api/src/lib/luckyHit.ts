@@ -49,6 +49,8 @@ export type RoundDTO = {
   endsAt: string;
   status: 'open' | 'locked' | 'settled';
   result: 'red' | 'black' | 'lucky_hit' | null;
+  /** Admin-forced result (admin UI only — set on the round before it settles). */
+  forcedResult?: 'red' | 'black' | 'lucky_hit' | null;
   redTotal: number;
   blackTotal: number;
   luckyHitTotal: number;
@@ -74,6 +76,7 @@ function toDTO(r: any, now: Date, lockSeconds: number): RoundDTO {
     endsAt: new Date(r.endsAt).toISOString(),
     status: r.status,
     result: r.result ?? null,
+    forcedResult: r.forcedResult ?? null,
     redTotal: Number(r.redTotal),
     blackTotal: Number(r.blackTotal),
     luckyHitTotal: Number(r.luckyHitTotal),
@@ -92,7 +95,13 @@ async function settleRound(roundId: string, cfg: LuckyHitConfig): Promise<void> 
     const round = await tx.luckyHitRound.findUnique({ where: { id: roundId } });
     if (!round || round.status === 'settled') return;
 
-    const result = pickResult(cfg);
+    // Admin override wins over RNG. Anything else (null / unknown string) falls
+    // back to the weighted random pick so a stale value can't break the game.
+    const FORCED = new Set(['red', 'black', 'lucky_hit']);
+    const result =
+      round.forcedResult && FORCED.has(round.forcedResult)
+        ? (round.forcedResult as 'red' | 'black' | 'lucky_hit')
+        : pickResult(cfg);
     const settledAt = new Date();
     const colorMul = cfg.colorPayout;
     const luckyMul = cfg.luckyHitPayout;

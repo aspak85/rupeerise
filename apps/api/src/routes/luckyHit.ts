@@ -191,4 +191,43 @@ router.get('/my-bets', requireAuth, async (req: AuthedRequest, res) => {
   }
 });
 
+/**
+ * GET /lucky-hit/live-bets — anonymized stream of recent bets for the side
+ * panel users see on /lucky-hit. Only side + amount + age are exposed; user
+ * identifiers are stripped server-side so this can never be used to deduce
+ * who is betting what.
+ */
+router.get('/live-bets', requireAuth, async (req: AuthedRequest, res) => {
+  try {
+    const take = Math.min(50, Math.max(1, Number(req.query?.take) || 25));
+    const rows = await prisma.luckyHitBet.findMany({
+      orderBy: { createdAt: 'desc' },
+      take,
+      select: {
+        id: true,
+        createdAt: true,
+        side: true,
+        amount: true,
+        status: true,
+        payout: true,
+        Round: { select: { period: true } },
+      },
+    });
+    return res.json({
+      bets: rows.map((b) => ({
+        id: b.id,
+        createdAt: b.createdAt,
+        side: b.side,
+        amount: Number(b.amount),
+        status: b.status,
+        payout: Number(b.payout),
+        period: b.Round.period,
+      })),
+    });
+  } catch (e) {
+    console.error(e);
+    return res.status(503).json({ error: 'Failed to load live bets' });
+  }
+});
+
 export default router;

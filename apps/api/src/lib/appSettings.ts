@@ -198,8 +198,10 @@ export const DEFAULT_LUCKY_HIT_CONFIG: LuckyHitConfig = {
   enabled: true,
   minBet: 10,
   maxBet: 5000,
-  roundDurationSec: 180,
-  lockSeconds: 30,
+  // 15-second total round (operator's spec): ~10s of betting + 5s of card-
+  // flip suspense. Admin can still tune this, but defaults match the live UX.
+  roundDurationSec: 15,
+  lockSeconds: 5,
   colorPayout: 1.9,
   luckyHitPayout: 9,
   redWeight: 47,
