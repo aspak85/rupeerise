@@ -238,10 +238,11 @@ export async function recentSettledRounds(take = 30): Promise<RoundDTO[]> {
 }
 
 /**
- * Atomically debit the bet amount from the user's deposit wallet first, then
- * fall back to the bonus wallet for any shortfall. Returns which wallet
- * absorbed the bet so the bet row can record its source. Throws when the
- * combined balance is insufficient — caller surfaces that as a 400.
+ * Atomically debit the bet amount from the user's available wallets.
+ * Priority: deposit → bonus → earnings → referral.
+ * User can bet with their FULL combined balance across all wallets.
+ * Returns which wallet(s) absorbed the bet. Throws when the combined
+ * balance is insufficient.
  */
 export async function debitBetAcrossWallets(
   tx: Prisma.TransactionClient,
@@ -249,69 +250,62 @@ export async function debitBetAcrossWallets(
   amount: number,
   refId: string,
   betId: string
-): Promise<'deposit' | 'bonus' | 'split'> {
-  const [deposit, bonus] = await Promise.all([
-    tx.wallet.findUnique({ where: { userId_type: { userId, type: 'deposit' } } }),
-    tx.wallet.findUnique({ where: { userId_type: { userId, type: 'bonus' } } }),
-  ]);
-  const depositBal = deposit ? Number(deposit.balance) : 0;
-  const bonusBal = bonus ? Number(bonus.balance) : 0;
-  if (depositBal + bonusBal < amount) {
-    throw new Error('Insufficient deposit + bonus balance');
+): Promise<'deposit' | 'bonus' | 'earnings' | 'referral' | 'split'> {
+  const walletTypes: Array<'deposit' | 'bonus' | 'earnings' | 'referral'> = [
+    'deposit', 'bonus', 'earnings', 'referral',
+  ];
+  const wallets = await Promise.all(
+    walletTypes.map((type) =>
+      tx.wallet.findUnique({ where: { userId_type: { userId, type } } })
+    )
+  );
+  const balances: Record<string, number> = {};
+  let totalAvailable = 0;
+  for (let i = 0; i < walletTypes.length; i++) {
+    const bal = wallets[i] ? Number(wallets[i]!.balance) : 0;
+    balances[walletTypes[i]] = bal;
+    totalAvailable += bal;
   }
 
-  if (depositBal >= amount) {
+  if (totalAvailable < amount) {
+    throw new Error('Insufficient balance');
+  }
+
+  // Single-wallet fast path (most common case).
+  for (const type of walletTypes) {
+    if (balances[type] >= amount) {
+      await postLedger({
+        userId,
+        walletType: type,
+        amount,
+        direction: 'debit',
+        reason: 'lucky_hit_bet',
+        refId,
+        idempotencyKey: `lucky_hit:bet:${betId}:${type}`,
+        tx,
+      });
+      return type;
+    }
+  }
+
+  // Split across multiple wallets in priority order.
+  let remaining = amount;
+  for (const type of walletTypes) {
+    if (remaining <= 0) break;
+    const take = Math.min(remaining, balances[type]);
+    if (take <= 0) continue;
     await postLedger({
       userId,
-      walletType: 'deposit',
-      amount,
+      walletType: type,
+      amount: take,
       direction: 'debit',
       reason: 'lucky_hit_bet',
       refId,
-      idempotencyKey: `lucky_hit:bet:${betId}:deposit`,
+      idempotencyKey: `lucky_hit:bet:${betId}:${type}`,
       tx,
     });
-    return 'deposit';
+    remaining -= take;
   }
-
-  if (depositBal === 0) {
-    await postLedger({
-      userId,
-      walletType: 'bonus',
-      amount,
-      direction: 'debit',
-      reason: 'lucky_hit_bet',
-      refId,
-      idempotencyKey: `lucky_hit:bet:${betId}:bonus`,
-      tx,
-    });
-    return 'bonus';
-  }
-
-  // Partial split — drain deposit, take the remainder from bonus.
-  if (depositBal > 0) {
-    await postLedger({
-      userId,
-      walletType: 'deposit',
-      amount: depositBal,
-      direction: 'debit',
-      reason: 'lucky_hit_bet',
-      refId,
-      idempotencyKey: `lucky_hit:bet:${betId}:deposit`,
-      tx,
-    });
-  }
-  const remainder = amount - depositBal;
-  await postLedger({
-    userId,
-    walletType: 'bonus',
-    amount: remainder,
-    direction: 'debit',
-    reason: 'lucky_hit_bet',
-    refId,
-    idempotencyKey: `lucky_hit:bet:${betId}:bonus`,
-    tx,
-  });
   return 'split';
 }
 

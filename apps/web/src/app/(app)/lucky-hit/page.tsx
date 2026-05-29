@@ -3,7 +3,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   CircleDot,
-  Coins,
   Dices,
   History,
   Minus,
@@ -367,11 +366,12 @@ export default function LuckyHitPage() {
     <div className="space-y-5 max-w-5xl mx-auto w-full">
       <Header />
 
-      {/* Wallet strip — refreshes every 2s, flashes on change */}
+      {/* Wallet strip — total available for betting */}
       <WalletStrip
         deposit={balanceOf("deposit")}
         bonus={balanceOf("bonus")}
         earnings={balanceOf("earnings")}
+        referral={balanceOf("referral")}
         deltas={walletDeltas}
       />
 
@@ -443,79 +443,55 @@ function WalletStrip({
   deposit,
   bonus,
   earnings,
+  referral,
   deltas,
 }: {
   deposit: number;
   bonus: number;
   earnings: number;
+  referral: number;
   deltas: Record<string, number>;
 }) {
+  const total = deposit + bonus + earnings + referral;
   return (
     <motion.div
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
-      className="grid grid-cols-3 gap-2 sm:gap-3"
+      className="glass rounded-2xl p-4"
     >
-      <WalletTile label="Deposit" amount={deposit} delta={deltas.deposit} icon={<Wallet size={14} />} accent="zinc" sub="bet from here" />
-      <WalletTile label="Bonus" amount={bonus} delta={deltas.bonus} icon={<Coins size={14} />} accent="yellow" sub="bet fallback" />
-      <WalletTile label="Earnings" amount={earnings} delta={deltas.earnings} icon={<Trophy size={14} />} accent="emerald" sub="wins land here" />
-    </motion.div>
-  );
-}
-
-function WalletTile({
-  label,
-  amount,
-  delta,
-  icon,
-  accent,
-  sub,
-}: {
-  label: string;
-  amount: number;
-  delta?: number;
-  icon: React.ReactNode;
-  accent: "zinc" | "yellow" | "emerald";
-  sub: string;
-}) {
-  const tone =
-    accent === "yellow"
-      ? "border-yellow-500/30 bg-yellow-500/5 text-yellow-300"
-      : accent === "emerald"
-      ? "border-emerald-500/30 bg-emerald-500/5 text-emerald-300"
-      : "border-zinc-500/30 bg-zinc-800/30 text-zinc-200";
-  return (
-    <motion.div
-      animate={delta ? { scale: [1, 1.05, 1] } : { scale: 1 }}
-      transition={{ duration: 0.45 }}
-      className={`relative rounded-2xl border p-3 ${tone}`}
-    >
-      <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest opacity-90">
-        {icon} {label}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-yellow-300/80">
+            <Wallet size={12} /> Available for bet
+          </div>
+          <div className="text-2xl sm:text-3xl font-bold text-white tabular-nums mt-0.5">
+            {formatINR(total)}
+          </div>
+        </div>
+        <div className="flex gap-3 text-xs text-zinc-400">
+          <span>Deposit <span className="text-white font-medium">{formatINR(deposit)}</span></span>
+          <span>Bonus <span className="text-white font-medium">{formatINR(bonus)}</span></span>
+          <span>Earnings <span className="text-white font-medium">{formatINR(earnings)}</span></span>
+          {referral > 0 && <span>Referral <span className="text-white font-medium">{formatINR(referral)}</span></span>}
+        </div>
       </div>
-      <div className="mt-1 text-base sm:text-lg font-semibold text-white tabular-nums">
-        {formatINR(amount)}
-      </div>
-      <div className="text-[10px] text-zinc-500 mt-0.5">{sub}</div>
-
-      {/* Delta flash — appears for ~3.5s when the balance changes */}
+      {/* Delta flash */}
       <AnimatePresence>
-        {delta !== undefined && delta !== 0 && (
-          <motion.div
-            key={delta + "" + label}
+        {Object.entries(deltas).filter(([, d]) => d !== 0).map(([key, d]) => (
+          <motion.span
+            key={key + d}
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
-            className={`absolute -top-2 right-2 text-[11px] font-bold px-2 py-0.5 rounded-full border ${
-              delta > 0
+            className={`inline-flex mr-2 mt-2 text-[11px] font-bold px-2 py-0.5 rounded-full border ${
+              d > 0
                 ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-200"
                 : "bg-red-500/20 border-red-500/40 text-red-200"
             }`}
           >
-            {delta > 0 ? "+" : ""}
-            {formatINR(Math.abs(delta))}
-          </motion.div>
-        )}
+            {d > 0 ? "+" : ""}{formatINR(Math.abs(d))} {key}
+          </motion.span>
+        ))}
       </AnimatePresence>
     </motion.div>
   );
@@ -563,7 +539,7 @@ function RoundPanel({
 
       {/* Cards stage */}
       <div className="mt-4 relative">
-        <VsCards key={revealKey} phase={displayPhase} result={displayRound.result} />
+        <VsCards key={revealKey} phase={displayPhase} result={displayRound.result} period={displayRound.period} />
 
         {/* Big result banner on settle */}
         <AnimatePresence>
@@ -628,25 +604,80 @@ function PhasePill({ phase }: { phase: "open" | "locked" | "settled" }) {
 }
 
 /**
- * 3-vs-3 cards stage. Cards are kept big so the flip is unmissable.
- *   open    — gentle float
- *   locked  — vigorous shake (the "shuffle" suspense beat)
- *   settled — winning side flips face-up with a 0.3s stagger; losing side
- *             dims and fades back so the contrast is obvious.
+ * 3-vs-3 PLAYING CARDS stage. Each side gets 3 cards with real values
+ * (A, K, Q, J, 10..2). When the round settles, cards flip over revealing
+ * values — the side whose cards have a higher total wins. The actual game
+ * result is still server-driven (weighted RNG / admin force) — the card
+ * values shown are cosmetic but deterministic per round period, so all
+ * users see the same cards.
+ *
+ * Animation phases:
+ *   open    — cards float face-down
+ *   locked  — cards shuffle vigorously
+ *   settled — winning side flips face-up with stagger; losing side dims
  */
+
+const CARD_VALUES = ["A", "K", "Q", "J", "10", "9", "8", "7", "6", "5", "4", "3", "2"];
+const CARD_POINTS: Record<string, number> = {
+  A: 14, K: 13, Q: 12, J: 11, "10": 10, "9": 9, "8": 8, "7": 7, "6": 6, "5": 5, "4": 4, "3": 3, "2": 2,
+};
+
+/**
+ * Generate deterministic card hands from the round period string.
+ * Uses a simple hash so the same period always produces the same cards,
+ * but the winning side's total is always higher (rigged to match the
+ * server-determined result).
+ */
+function generateCards(period: string, result: Side | null): { red: string[]; black: string[] } {
+  // Simple hash from period string
+  let hash = 0;
+  for (let i = 0; i < period.length; i++) {
+    hash = ((hash << 5) - hash + period.charCodeAt(i)) | 0;
+  }
+  const pick = (seed: number) => CARD_VALUES[Math.abs(seed) % CARD_VALUES.length];
+
+  const redCards = [pick(hash), pick(hash * 3 + 7), pick(hash * 5 + 13)];
+  const blackCards = [pick(hash * 2 + 1), pick(hash * 4 + 11), pick(hash * 7 + 3)];
+
+  // If result is known, ensure the winning side has strictly higher total.
+  // We swap one card to guarantee it.
+  if (result === "red" || result === "lucky_hit") {
+    const redTotal = redCards.reduce((s, c) => s + CARD_POINTS[c], 0);
+    const blackTotal = blackCards.reduce((s, c) => s + CARD_POINTS[c], 0);
+    if (redTotal <= blackTotal) {
+      // Boost red's lowest card to A
+      const minIdx = redCards.reduce((mi, c, i) => CARD_POINTS[c] < CARD_POINTS[redCards[mi]] ? i : mi, 0);
+      redCards[minIdx] = "A";
+    }
+  } else if (result === "black") {
+    const redTotal = redCards.reduce((s, c) => s + CARD_POINTS[c], 0);
+    const blackTotal = blackCards.reduce((s, c) => s + CARD_POINTS[c], 0);
+    if (blackTotal <= redTotal) {
+      const minIdx = blackCards.reduce((mi, c, i) => CARD_POINTS[c] < CARD_POINTS[blackCards[mi]] ? i : mi, 0);
+      blackCards[minIdx] = "A";
+    }
+  }
+
+  return { red: redCards, black: blackCards };
+}
+
 function VsCards({
   phase,
   result,
+  period,
 }: {
   phase: "open" | "locked" | "settled";
   result: Side | null;
+  period: string;
 }) {
   const showResult = phase === "settled" && !!result;
   const redWins = showResult && (result === "red" || result === "lucky_hit");
   const blackWins = showResult && (result === "black" || result === "lucky_hit");
+  const cards = generateCards(period, result);
+
   return (
     <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 sm:gap-4 min-h-[120px] sm:min-h-[140px]">
-      <CardRow side="red" phase={phase} winner={redWins} result={result} />
+      <CardRow side="red" phase={phase} winner={redWins} result={result} values={cards.red} />
       <div className="text-center">
         <motion.div
           animate={
@@ -662,7 +693,7 @@ function VsCards({
           VS
         </motion.div>
       </div>
-      <CardRow side="black" phase={phase} winner={blackWins} result={result} />
+      <CardRow side="black" phase={phase} winner={blackWins} result={result} values={cards.black} />
     </div>
   );
 }
@@ -672,17 +703,19 @@ function CardRow({
   phase,
   winner,
   result,
+  values,
 }: {
   side: "red" | "black";
   phase: "open" | "locked" | "settled";
   winner: boolean;
   result: Side | null;
+  values: string[];
 }) {
   const isLucky = winner && result === "lucky_hit";
   const reverse = side === "black";
   return (
     <div className={`flex ${reverse ? "justify-end flex-row-reverse" : "justify-start"} items-center gap-1.5 sm:gap-2`}>
-      {[0, 1, 2].map((i) => (
+      {values.map((val, i) => (
         <FlipCard
           key={i}
           index={i}
@@ -690,6 +723,7 @@ function CardRow({
           phase={phase}
           winner={winner}
           isLucky={isLucky}
+          value={val}
         />
       ))}
     </div>
@@ -712,12 +746,14 @@ function FlipCard({
   phase,
   winner,
   isLucky,
+  value,
 }: {
   index: number;
   side: "red" | "black";
   phase: "open" | "locked" | "settled";
   winner: boolean;
   isLucky: boolean;
+  value: string;
 }) {
   // Outer flip — only fires on settled.
   const outerAnimate =
@@ -794,7 +830,7 @@ function FlipCard({
             backfaceVisibility: "hidden",
           }}
         >
-          {isLucky ? "★" : side === "red" ? "R" : "B"}
+          {isLucky ? "★" : value}
         </div>
       </motion.div>
     </motion.div>
