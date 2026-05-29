@@ -269,6 +269,56 @@ model Poster {
   sortOrder Int      @default(0)
 }
 
+/// One round of the Lucky Hit / Color Prediction mini-game.
+/// A new round is created lazily every `roundDurationSec` seconds (default 180 = 3 min)
+/// aligned to wall-clock minutes in IST. Bets are accepted while `status='open'`,
+/// frozen during the last `lockSeconds` seconds (`status='locked'`), then the
+/// server picks a weighted-random `result` and transitions to `status='settled'`,
+/// crediting winners' earnings wallets via `postLedger()`.
+model LuckyHitRound {
+  id             String   @id @default(cuid())
+  /// Human-friendly slot id, e.g. "20260529-2118" (YYYYMMDD-HHMM in IST). Unique
+  /// per slot so concurrent reads can use upsert-by-period for idempotent creation.
+  period         String   @unique
+  startedAt      DateTime
+  endsAt         DateTime
+  /// "open" | "locked" | "settled"
+  status         String   @default("open")
+  /// Final result once settled. One of: "red" | "black" | "lucky_hit". Null while open/locked.
+  result         String?
+  settledAt      DateTime?
+  /// Live aggregates updated on every successful bet (also used by the score panel UI).
+  redTotal       Decimal  @default(0)
+  blackTotal     Decimal  @default(0)
+  luckyHitTotal  Decimal  @default(0)
+  betCount       Int      @default(0)
+  Bets           LuckyHitBet[]
+  @@index([startedAt])
+  @@index([status])
+}
+
+/// One user's bet on a single Lucky Hit round.
+model LuckyHitBet {
+  id           String   @id @default(cuid())
+  createdAt    DateTime @default(now())
+  userId       String
+  roundId      String
+  /// "red" | "black" | "lucky_hit"
+  side         String
+  amount       Decimal
+  /// "deposit" or "bonus" — which wallet was debited (deposit is preferred,
+  /// bonus is the fallback when deposit is short).
+  walletSource String   @default("deposit")
+  /// "pending" while the round is open/locked, then "won" or "lost" once settled.
+  status       String   @default("pending")
+  /// 0 for losing bets; amount * payoutMultiplier for winning bets.
+  payout       Decimal  @default(0)
+  settledAt    DateTime?
+  Round        LuckyHitRound @relation(fields: [roundId], references: [id])
+  @@index([userId, createdAt])
+  @@index([roundId])
+}
+
 /// Public-facing pseudo-live transaction feed shown on landing/deposit/
 /// withdraw pages. Admins can disable individual rows without deleting.
 /// We seed this with realistic Indian first-name + city combos so the page

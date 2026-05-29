@@ -26,6 +26,8 @@ import postersRouter, { adminPostersRouter } from './routes/posters.js';
 import feedRouter, { adminFeedRouter } from './routes/feed.js';
 import adminSettingsRouter from './routes/adminSettings.js';
 import notificationsRouter from './routes/notifications.js';
+import luckyHitRouter from './routes/luckyHit.js';
+import adminLuckyHitRouter from './routes/adminLuckyHit.js';
 import { ensurePlansSeeded } from './lib/plans.js';
 import { ensureChannelsSeeded } from './lib/paymentChannels.js';
 import { ensureAdminBootstrap } from './lib/adminBootstrap.js';
@@ -86,6 +88,7 @@ app.use('/support', supportRouter);  // GET /support/config
 app.use('/posters', postersRouter);  // GET /posters (public)
 app.use('/feed', feedRouter);        // GET /feed/live (public)
 app.use('/notifications', notificationsRouter);
+app.use('/lucky-hit', luckyHitRouter);
 
 // Public settings (read-only, specific keys only)
 app.get('/settings/:key', async (req: any, res: any) => {
@@ -110,6 +113,7 @@ app.use('/admin/support', adminSupportRouter);
 app.use('/admin/posters', adminPostersRouter);
 app.use('/admin/feed', adminFeedRouter);
 app.use('/admin/settings', adminSettingsRouter);
+app.use('/admin/lucky-hit', adminLuckyHitRouter);
 app.use('/admin/exports', exportsRouter);
 app.use('/admin', adminRouter);
 
