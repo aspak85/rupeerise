@@ -3,7 +3,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   CircleDot,
-  Clock,
   Coins,
   Dices,
   History,
@@ -120,13 +119,6 @@ const REVEAL_FREEZE_MS = 2500;
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
-
-function formatMs(ms: number) {
-  const s = Math.max(0, Math.ceil(ms / 1000));
-  const m = Math.floor(s / 60);
-  const sec = s % 60;
-  return `${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
-}
 
 function timeAgo(iso: string, now: number) {
   const t = new Date(iso).getTime();
@@ -389,10 +381,8 @@ export default function LuckyHitPage() {
         displayRound={displayRound}
         myBetOnReveal={myBetOnReveal}
         cfg={cfg}
-        effectiveMs={effectiveMs}
         displayPhase={displayPhase}
         revealKey={revealKey}
-        isFreezing={!!pendingReveal}
       />
 
       {/* History strip */}
@@ -439,7 +429,7 @@ function Header() {
         Pick a colour · win up to <span className="gold-text">9×</span>
       </h1>
       <p className="mt-1 text-sm text-zinc-400 max-w-2xl">
-        Fast 15-second rounds — bet, then watch the cards open.
+        15 second fast rounds — pick, bet, cards open. Wins credited to <span className="text-yellow-200 font-medium">earnings wallet</span> instantly.
       </p>
     </div>
   );
@@ -540,72 +530,42 @@ function RoundPanel({
   displayRound,
   myBetOnReveal,
   cfg,
-  effectiveMs,
   displayPhase,
   revealKey,
-  isFreezing,
 }: {
   liveRound: Round;
   displayRound: Round;
   myBetOnReveal: MyBet | null;
   cfg: StateResp["config"];
-  effectiveMs: number;
+  effectiveMs?: number;
   displayPhase: "open" | "locked" | "settled";
   revealKey: number;
-  isFreezing: boolean;
+  isFreezing?: boolean;
 }) {
-  // Header reflects the LIVE round (period / countdown), not the freeze
-  // target — the user shouldn't see the period clock rewind during a reveal.
-  const phaseLabel =
-    displayPhase === "open"
-      ? "Bets close in"
-      : displayPhase === "locked"
-      ? "Cards opening in"
-      : isFreezing
-      ? "Result revealed"
-      : "Settled";
-  const phaseColor =
-    displayPhase === "open"
-      ? "text-emerald-300"
-      : displayPhase === "locked"
-      ? "text-yellow-300"
-      : "text-emerald-300";
-
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       className="glass rounded-3xl p-5 sm:p-6 relative overflow-hidden"
     >
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <div className="text-xs uppercase tracking-widest text-zinc-400">Period</div>
-          <div className="text-white font-mono font-semibold text-lg sm:text-xl">{liveRound.period}</div>
-        </div>
-        <div className="text-right">
-          <div className={`text-xs uppercase tracking-widest ${phaseColor}`}>{phaseLabel}</div>
-          <div className="flex items-center gap-2 justify-end">
-            <Clock size={16} className={phaseColor} />
-            <span className="text-3xl sm:text-4xl font-bold tabular-nums text-white">
-              {isFreezing ? "—" : formatMs(effectiveMs)}
-            </span>
+      {/* Single-line period + phase */}
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex items-center gap-3">
+          <div className="font-mono font-semibold text-white text-base sm:text-lg tracking-wider">
+            #{liveRound.period}
           </div>
+          <PhasePill phase={displayPhase} />
         </div>
-      </div>
-
-      <div className="mt-3 flex items-center gap-2 flex-wrap">
-        <PhasePill phase={displayPhase} />
-        <span className="text-[11px] text-zinc-500 inline-flex items-center gap-1">
-          <Timer size={10} /> {Math.round(cfg.roundDurationSec)}s round · last {cfg.lockSeconds}s = card flip
-        </span>
+        <div className="text-[11px] text-zinc-500 inline-flex items-center gap-1">
+          <Timer size={10} /> 15s per round
+        </div>
       </div>
 
       {/* Cards stage */}
-      <div className="mt-5 relative">
+      <div className="mt-4 relative">
         <VsCards key={revealKey} phase={displayPhase} result={displayRound.result} />
 
-        {/* Big result label that materialises with the cards. Acts as the
-            "RED WIN!" banner overlay sitting on top of the cards stage. */}
+        {/* Big result banner on settle */}
         <AnimatePresence>
           {displayPhase === "settled" && displayRound.result && (
             <motion.div
@@ -624,9 +584,6 @@ function RoundPanel({
                     : "bg-yellow-400/30 border-yellow-200 text-yellow-50"
                 }`}
               >
-                <div className="text-[10px] uppercase tracking-widest opacity-80 text-center">
-                  {displayRound.period}
-                </div>
                 <div className="text-2xl sm:text-3xl font-extrabold tracking-wide">
                   {displayRound.result === "red"
                     ? "RED WINS!"
@@ -635,7 +592,6 @@ function RoundPanel({
                     : "LUCKY HIT ★"}
                 </div>
               </div>
-              {/* Personal outcome */}
               {myBetOnReveal && (
                 <div
                   className={`mt-2 text-xs font-semibold px-3 py-1 rounded-full border ${

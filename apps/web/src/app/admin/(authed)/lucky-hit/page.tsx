@@ -234,7 +234,7 @@ export default function AdminLuckyHitPage() {
   };
 
   const reset = async () => {
-    if (!confirm("Restore default Lucky Hit config (15s rounds)?")) return;
+    if (!confirm("Restore default Lucky Hit config (15s fast rounds)?")) return;
     setSaving(true);
     try {
       const r = await api<{ config: LuckyHitConfig }>("/admin/lucky-hit/reset", { method: "POST" });
@@ -390,7 +390,7 @@ export default function AdminLuckyHitPage() {
             min={20}
             max={1800}
             int
-            help="Default 15 — gives ~10s bet + 5s reveal"
+            help="Default 15 — fast game"
           />
           <NumField
             label="Lock window (sec)"
