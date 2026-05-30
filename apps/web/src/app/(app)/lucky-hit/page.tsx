@@ -33,7 +33,9 @@ function genCards(period:string, result:Side|null) {
   return { red, black, redTotal: red.reduce((s,c)=>s+PTS[c],0), blackTotal: black.reduce((s,c)=>s+PTS[c],0) };
 }
 
-const REVEAL_MS = 3500;
+// Cards stay flipped open for 4 seconds so users can clearly see the result.
+// The flip animation takes ~0.6s, so effective visible time = ~3.4s.
+const REVEAL_MS = 4000;
 
 export default function LuckyHitPage() {
   const [data,setData] = useState<StateResp|null>(null);
@@ -83,14 +85,19 @@ export default function LuckyHitPage() {
   useEffect(()=>{const id=setInterval(()=>setNow(Date.now()),200);return()=>clearInterval(id);},[]);
   useEffect(()=>{if(!reveal)return;const id=setTimeout(()=>setReveal(null),REVEAL_MS);return()=>clearTimeout(id);},[reveal]);
 
-  // Show win banner when reveal + user's bet was a win
+  // Show win/loss banner when reveal + user had a bet on that round
   useEffect(()=>{
     if(!reveal||!reveal.result) return;
     const myBet = myBets.find(b=>b.period===reveal.period);
-    if(myBet && myBet.side===reveal.result){
-      const payout = myBet.payout || myBet.amount * (reveal.result==="lucky_hit"?9:1.9);
-      setWinBanner({amount:payout,side:reveal.result});
-      const id=setTimeout(()=>setWinBanner(null),4000);
+    if(myBet){
+      if(myBet.side===reveal.result){
+        const payout = myBet.payout || myBet.amount * (reveal.result==="lucky_hit"?9:1.9);
+        setWinBanner({amount:payout,side:reveal.result});
+      } else {
+        // Show loss banner too so user always knows the outcome
+        setWinBanner({amount:-myBet.amount,side:myBet.side});
+      }
+      const id=setTimeout(()=>setWinBanner(null),4500);
       return()=>clearTimeout(id);
     }
   },[reveal,myBets]);
@@ -140,17 +147,24 @@ export default function LuckyHitPage() {
 
   return(
     <div className="space-y-3 max-w-md mx-auto w-full pb-8">
-      {/* Win notification banner — slides in from top */}
+      {/* Win/Loss notification banner — slides in from top */}
       <AnimatePresence>
         {winBanner&&(
           <motion.div initial={{opacity:0,y:-40}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-40}} className="fixed top-0 left-0 right-0 z-50 flex justify-center pt-2 px-4 pointer-events-none">
-            <div className="glass rounded-xl border-2 border-emerald-400/60 bg-emerald-500/20 px-5 py-3 flex items-center gap-3 shadow-2xl shadow-emerald-500/30 pointer-events-auto">
-              <Trophy size={20} className="text-yellow-300"/>
+            <div className={`rounded-xl border-2 px-5 py-3 flex items-center gap-3 shadow-2xl pointer-events-auto backdrop-blur-md ${
+              winBanner.amount>0
+                ? "border-emerald-400/60 bg-emerald-500/30 shadow-emerald-500/30"
+                : "border-red-400/60 bg-red-500/30 shadow-red-500/30"
+            }`}>
+              <Trophy size={20} className={winBanner.amount>0?"text-yellow-300":"text-red-300"}/>
               <div>
-                <div className="text-xs text-emerald-200 font-semibold uppercase">You Won!</div>
-                <div className="text-lg font-bold text-white">{formatINR(winBanner.amount)}</div>
+                <div className={`text-xs font-semibold uppercase ${winBanner.amount>0?"text-emerald-200":"text-red-200"}`}>
+                  {winBanner.amount>0?"🎉 You Won!":"You Lost"}
+                </div>
+                <div className="text-lg font-bold text-white">
+                  {winBanner.amount>0?`+${formatINR(winBanner.amount)}`:`-${formatINR(Math.abs(winBanner.amount))}`}
+                </div>
               </div>
-              <div className="text-[10px] text-emerald-300 uppercase">{LABEL[winBanner.side]}</div>
             </div>
           </motion.div>
         )}
@@ -184,8 +198,8 @@ export default function LuckyHitPage() {
         )}
       </div>
 
-      {/* === CARDS — BOTH SIDES OPEN === */}
-      <CardsArea phase={phase} displayRound={displayRound} cfg={cfg} myRevealBet={myRevealBet}/>
+      {/* === CARDS — BOTH SIDES OPEN (key forces re-mount on round change for clean animation) === */}
+      <CardsArea key={displayRound.period} phase={phase} displayRound={displayRound} cfg={cfg} myRevealBet={myRevealBet}/>
 
       {/* Results grid — last 50 in a 10-column pattern grid */}
       <div className="glass rounded-xl p-3">
@@ -353,6 +367,7 @@ function GameCard({idx,side,phase,value,isWinner,isLucky}:{idx:number;side:"red"
 
   return (
     <motion.div
+      initial={{ rotateY: 0, scale: 1, opacity: 1 }}
       animate={animate}
       transition={transition}
       className={`relative w-10 h-14 sm:w-12 sm:h-[68px] shrink-0 ${cssAnim}`}
