@@ -19,23 +19,41 @@ const CARDS = ["A","K","Q","J","10","9","8","7","6","5","4","3","2"];
 const PTS: Record<string,number> = {A:14,K:13,Q:12,J:11,"10":10,"9":9,"8":8,"7":7,"6":6,"5":5,"4":4,"3":3,"2":2};
 
 function hashPeriod(p: string) { let h=0; for(let i=0;i<p.length;i++) h=((h<<5)-h+p.charCodeAt(i))|0; return h; }
-function pick(h:number,i:number) { return CARDS[Math.abs(h*(i+1)*7+i*13)%CARDS.length]; }
-
 function total(cards:string[]) { return cards.reduce((s,c)=>s+PTS[c],0); }
 
+// High cards for the winning hand, low cards for the losing hand. This makes
+// the winner's cards ALWAYS visibly bigger — no random/swap edge cases.
+const HIGH = ["A","K","Q","J","10"];
+const LOW  = ["7","6","5","4","3","2"];
+
+function deriveHand(seed:number, pool:string[]) {
+  return [0,1,2].map(i => pool[Math.abs(seed*(i+1)*7+i*13) % pool.length]);
+}
+
+/**
+ * Generate the two card hands so they ALWAYS agree with `result`:
+ *  - The winning side gets HIGH cards (bigger total)
+ *  - The losing side gets LOW cards (smaller total)
+ *  - lucky_hit: both sides get high cards (it's the jackpot — both "open big")
+ * Deterministic per period so every player sees the same cards.
+ */
 function genCards(period:string, result:Side|null) {
   const h = hashPeriod(period);
-  let red = [pick(h,0),pick(h,1),pick(h,2)];
-  let black = [pick(h,3),pick(h,4),pick(h,5)];
-  let rT = total(red), bT = total(black);
-  // Break ties so there's always a clear winner visually.
-  if (rT === bT) { red[0] = red[0]==="A" ? "K" : "A"; rT = total(red); }
-  // Swap hands so the winning side ALWAYS has the higher card total.
-  // Swapping is bulletproof — winner's cards are always visibly bigger.
-  const redShouldWin = result==="red" || result==="lucky_hit";
-  const blackShouldWin = result==="black";
-  if (redShouldWin && rT < bT) { [red, black] = [black, red]; }
-  if (blackShouldWin && bT < rT) { [red, black] = [black, red]; }
+  let red:string[], black:string[];
+  if (result === "red") {
+    red = deriveHand(h, HIGH);
+    black = deriveHand(h+1, LOW);
+  } else if (result === "black") {
+    red = deriveHand(h, LOW);
+    black = deriveHand(h+1, HIGH);
+  } else if (result === "lucky_hit") {
+    red = deriveHand(h, HIGH);
+    black = deriveHand(h+1, HIGH);
+  } else {
+    // Round not settled yet — neutral mixed hands (face-down anyway).
+    red = deriveHand(h, CARDS);
+    black = deriveHand(h+1, CARDS);
+  }
   return { red, black, redTotal: total(red), blackTotal: total(black) };
 }
 
@@ -202,7 +220,7 @@ export default function LuckyHitPage() {
       </div>
 
       {/* === CARDS — BOTH SIDES OPEN (key forces re-mount on round change for clean animation) === */}
-      <CardsArea key={displayRound.period} phase={phase} displayRound={displayRound} cfg={cfg} myRevealBet={myRevealBet}/>
+      <CardsArea key={displayRound.period} phase={phase} displayRound={displayRound} myRevealBet={myRevealBet}/>
 
       {/* Results grid — last 50 in a 10-column pattern grid */}
       <div className="glass rounded-xl p-3">
@@ -296,7 +314,7 @@ export default function LuckyHitPage() {
 /* CARDS AREA — Both sides flip open, winner has bigger cards         */
 /* ═══════════════════════════════════════════════════════════════════ */
 
-function CardsArea({phase,displayRound,cfg,myRevealBet}:{phase:"open"|"locked"|"settled";displayRound:Round;cfg:StateResp["config"];myRevealBet:MyBet|null}) {
+function CardsArea({phase,displayRound,myRevealBet}:{phase:"open"|"locked"|"settled";displayRound:Round;myRevealBet:MyBet|null}) {
   const cards = genCards(displayRound.period, displayRound.result);
   const result = displayRound.result;
   // Both sides flip. Winner side scales up, loser scales down slightly.
@@ -306,42 +324,52 @@ function CardsArea({phase,displayRound,cfg,myRevealBet}:{phase:"open"|"locked"|"
   return (
     <div className="glass rounded-2xl p-4 space-y-3">
       {/* Card grid: red left, VS center, black right */}
-      <div className="grid grid-cols-[1fr_28px_1fr] items-center">
+      <div className="grid grid-cols-[1fr_auto_1fr] items-start gap-1">
         {/* RED SIDE */}
-        <div className="flex justify-center gap-1">
-          {cards.red.map((v,i)=>(
-            <GameCard key={`r${i}`} idx={i} side="red" phase={phase} value={v} isWinner={phase==="settled"&&redWin} isLucky={phase==="settled"&&result==="lucky_hit"}/>
-          ))}
+        <div className="flex flex-col items-center gap-1.5">
+          <div className="flex justify-center gap-1">
+            {cards.red.map((v,i)=>(
+              <GameCard key={`r${i}`} idx={i} side="red" phase={phase} value={v} isWinner={phase==="settled"&&redWin} isLucky={phase==="settled"&&result==="lucky_hit"}/>
+            ))}
+          </div>
+          {phase==="settled"&&(
+            <div className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${redWin?"bg-red-500/30 text-red-200 border border-red-400":"bg-zinc-800/50 text-zinc-500"}`}>
+              {redWin?"✓ WIN":`${cards.redTotal}`}
+            </div>
+          )}
         </div>
         {/* VS */}
-        <div className="flex items-center justify-center">
+        <div className="flex items-center justify-center pt-6">
           <motion.span animate={phase==="locked"?{scale:[1,1.3,1]}:{}} transition={{repeat:phase==="locked"?Infinity:0,duration:0.4}} className="text-yellow-300 font-extrabold text-sm gold-text">VS</motion.span>
         </div>
         {/* BLACK SIDE */}
-        <div className="flex justify-center gap-1">
-          {cards.black.map((v,i)=>(
-            <GameCard key={`b${i}`} idx={i} side="black" phase={phase} value={v} isWinner={phase==="settled"&&blackWin} isLucky={phase==="settled"&&result==="lucky_hit"}/>
-          ))}
+        <div className="flex flex-col items-center gap-1.5">
+          <div className="flex justify-center gap-1">
+            {cards.black.map((v,i)=>(
+              <GameCard key={`b${i}`} idx={i} side="black" phase={phase} value={v} isWinner={phase==="settled"&&blackWin} isLucky={phase==="settled"&&result==="lucky_hit"}/>
+            ))}
+          </div>
+          {phase==="settled"&&(
+            <div className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${blackWin?"bg-white/20 text-white border border-white":"bg-zinc-800/50 text-zinc-500"}`}>
+              {blackWin?"✓ WIN":`${cards.blackTotal}`}
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Totals + result text */}
+      {/* Result text */}
       {phase==="settled"&&result&&(
-        <motion.div initial={{opacity:0,y:10}} animate={{opacity:1,y:0}} transition={{delay:0.6}} className="text-center space-y-1">
-          <div className="flex justify-center gap-4 text-xs">
-            <span className={`font-bold ${redWin?"text-red-300":"text-zinc-500"}`}>Red: {cards.redTotal}</span>
-            <span className={`font-bold ${blackWin?"text-white":"text-zinc-500"}`}>Black: {cards.blackTotal}</span>
-          </div>
-          <div className={`inline-block px-3 py-1 rounded-full text-xs font-bold border ${
+        <motion.div initial={{opacity:0,y:10}} animate={{opacity:1,y:0}} transition={{delay:0.5}} className="text-center space-y-1">
+          <div className={`inline-block px-4 py-1.5 rounded-full text-sm font-extrabold border-2 ${
             result==="red"?"bg-red-500/20 border-red-400 text-red-200":
             result==="black"?"bg-zinc-700/60 border-zinc-300 text-white":
             "bg-yellow-500/20 border-yellow-300 text-yellow-200"
           }`}>
-            {result==="red"?"RED WINS!":result==="black"?"BLACK WINS!":"★ LUCKY HIT!"}
+            {result==="red"?"🔴 RED WINS!":result==="black"?"⚫ BLACK WINS!":"⭐ LUCKY HIT!"}
           </div>
           {myRevealBet&&(
-            <div className={`text-[11px] font-semibold ${myRevealBet.side===result?"text-emerald-300":"text-red-300"}`}>
-              {myRevealBet.side===result?`You won ${formatINR(myRevealBet.payout||myRevealBet.amount*(result==="lucky_hit"?cfg.luckyHitPayout:cfg.colorPayout))}`:`Lost ${formatINR(myRevealBet.amount)}`}
+            <div className={`text-xs font-bold ${myRevealBet.status==="won"?"text-emerald-300":"text-red-300"}`}>
+              {myRevealBet.status==="won"?`🎉 You won ${formatINR(myRevealBet.payout)}`:myRevealBet.status==="lost"?`Lost ${formatINR(myRevealBet.amount)}`:"Settling…"}
             </div>
           )}
         </motion.div>
