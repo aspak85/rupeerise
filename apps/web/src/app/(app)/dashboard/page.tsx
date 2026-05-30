@@ -175,9 +175,9 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6 max-w-6xl mx-auto w-full">
       {/* Greeting — centered welcome message */}
-      <div className="text-center">
+      <div className="text-center px-4">
         <div className="text-xs uppercase tracking-widest text-yellow-400/80">Welcome back</div>
-        <h1 className="text-2xl sm:text-3xl font-semibold text-white mt-1 truncate">
+        <h1 className="text-xl sm:text-3xl font-semibold text-white mt-1">
           {me?.user.name || me?.user.email || user?.email}
         </h1>
       </div>
