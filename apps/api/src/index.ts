@@ -133,6 +133,14 @@ const port =
 console.log(`[boot] PORT env='${rawPort}' parsed=${parsedPort} using=${port}`);
 app.listen(port, async () => {
   console.log(`API listening on http://localhost:${port}`);
+  // Keep the Render free-tier service warm (no-op in dev). Started here so it
+  // only runs once the server is actually listening.
+  try {
+    const { startKeepAlive } = await import('./lib/keepAlive.js');
+    startKeepAlive();
+  } catch (e) {
+    console.warn('[keepalive] not started:', (e as Error).message);
+  }
   // Auto-seed defaults on boot (idempotent). Failures are non-fatal so the
   // API stays up even if the DB is briefly unreachable.
   try {
