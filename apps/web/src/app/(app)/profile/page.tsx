@@ -150,10 +150,10 @@ export default function ProfilePage() {
 
       {/* ═══ History tiles (2×2 grid like reference) ═══ */}
       <div className="grid grid-cols-2 gap-3">
-        <HistoryTile href="/lucky-hit" icon={<Dices size={18} />} label="Game History" sub="Lucky Hit record" color="emerald" />
-        <HistoryTile href="/profile?tab=statement" icon={<History size={18} />} label="Transaction" sub="All activity" color="blue" />
-        <HistoryTile href="/profile?tab=deposits" icon={<ArrowDownToLine size={18} />} label="Deposit" sub="Deposit history" color="orange" />
-        <HistoryTile href="/profile?tab=withdrawals" icon={<Receipt size={18} />} label="Withdraw" sub="Withdrawal history" color="red" />
+        <HistoryTile href="/profile/history?tab=game" icon={<Dices size={18} />} label="Game History" sub="Lucky Hit record" color="emerald" />
+        <HistoryTile href="/profile/history?tab=transaction" icon={<History size={18} />} label="Transaction" sub="All activity" color="blue" />
+        <HistoryTile href="/profile/history?tab=deposit" icon={<ArrowDownToLine size={18} />} label="Deposit" sub="Deposit history" color="orange" />
+        <HistoryTile href="/profile/history?tab=withdraw" icon={<Receipt size={18} />} label="Withdraw" sub="Withdrawal history" color="red" />
       </div>
 
       {/* ═══ Support section ═══ */}

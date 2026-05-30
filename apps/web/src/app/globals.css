@@ -56,3 +56,23 @@ body {
   animation: shimmer 1.5s infinite;
   border-radius: 8px;
 }
+
+
+
+/* Lucky Hit card animations — CSS for performance (no React re-renders) */
+@keyframes card-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+@keyframes card-shake {
+  0%, 100% { transform: rotate(-6deg) translateY(0); }
+  25% { transform: rotate(6deg) translateY(-4px); }
+  50% { transform: rotate(-6deg) translateY(0); }
+  75% { transform: rotate(6deg) translateY(-4px); }
+}
+.animate-card-bob {
+  animation: card-bob 1.8s ease-in-out infinite;
+}
+.animate-card-shake {
+  animation: card-shake 0.35s ease-in-out infinite;
+}

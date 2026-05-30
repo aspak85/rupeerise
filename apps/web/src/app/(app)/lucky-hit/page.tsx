@@ -304,61 +304,49 @@ function CardsArea({phase,displayRound,cfg,myRevealBet}:{phase:"open"|"locked"|"
 }
 
 /**
- * Single playing card. BOTH sides flip face-up when settled — this is the
- * key difference from before. Winner's cards are slightly bigger (scale 1.1),
- * loser's cards slightly smaller (scale 0.9). During open/locked they stay
- * face-down with bob/shake animation.
+ * Single playing card. Uses CSS @keyframes for bob/shake (no framer-motion
+ * repeat:Infinity which causes lag). Framer-motion only handles the one-shot
+ * flip on settle.
  */
 function GameCard({idx,side,phase,value,isWinner,isLucky}:{idx:number;side:"red"|"black";phase:"open"|"locked"|"settled";value:string;isWinner:boolean;isLucky:boolean}) {
-  // ALL cards flip on settled (both sides). Winner scales up.
   const settled = phase==="settled";
-  const flipAnimate = settled
-    ? { rotateY: 180, scale: isWinner ? 1.08 : 0.88, opacity: isWinner ? 1 : 0.6 }
+  // Framer handles ONLY the flip + scale
+  const animate = settled
+    ? { rotateY: 180, scale: isWinner ? 1.1 : 0.85, opacity: isWinner ? 1 : 0.5 }
     : { rotateY: 0, scale: 1, opacity: 1 };
-  const flipTransition = settled
-    ? { duration: 0.5, delay: idx * 0.15 }
-    : { duration: 0.25 };
+  const transition = settled
+    ? { duration: 0.45, delay: idx * 0.15, ease: "easeOut" as const }
+    : { duration: 0.2 };
 
-  // Shake/bob only while not settled
-  const innerAnimate = phase==="locked"
-    ? { rotate: [-6, 6, -6], y: [0, -3, 0] }
-    : phase==="open"
-    ? { y: [0, -2, 0] }
-    : { rotate: 0, y: 0 };
-  const innerTransition = phase==="locked"
-    ? { repeat: Infinity, duration: 0.35, delay: idx*0.04 }
-    : phase==="open"
-    ? { repeat: Infinity, duration: 1.8, delay: idx*0.1 }
-    : { duration: 0.15 };
+  // CSS class for bob/shake (performant, no React re-renders)
+  const cssAnim = phase === "open" ? "animate-card-bob" : phase === "locked" ? "animate-card-shake" : "";
 
   return (
     <motion.div
-      animate={flipAnimate}
-      transition={flipTransition}
-      className="relative w-10 h-14 sm:w-12 sm:h-[68px] shrink-0"
-      style={{transformStyle:"preserve-3d",perspective:600}}
+      animate={animate}
+      transition={transition}
+      className={`relative w-10 h-14 sm:w-12 sm:h-[68px] shrink-0 ${cssAnim}`}
+      style={{transformStyle:"preserve-3d",perspective:600,animationDelay:`${idx*80}ms`}}
     >
-      <motion.div animate={innerAnimate} transition={innerTransition} className="w-full h-full relative" style={{transformStyle:"preserve-3d"}}>
-        {/* BACK (face-down) */}
-        <div className="absolute inset-0 rounded-md border shadow flex items-center justify-center" style={{
-          background:side==="red"?"linear-gradient(135deg,#991b1b,#dc2626,#991b1b)":"linear-gradient(135deg,#18181b,#3f3f46,#18181b)",
-          borderColor:side==="red"?"#f87171":"#71717a",
-          backfaceVisibility:"hidden"
-        }}>
-          <span className="text-white/60 text-base font-bold">{side==="red"?"♥":"♠"}</span>
-        </div>
-        {/* FRONT (face-up) — visible after flip */}
-        <div className="absolute inset-0 rounded-md border shadow-lg flex flex-col items-center justify-center" style={{
-          background:isLucky?"linear-gradient(135deg,#fef3c7,#fbbf24,#f59e0b)":side==="red"?"linear-gradient(135deg,#fef2f2,#ef4444,#b91c1c)":"linear-gradient(135deg,#fafafa,#71717a,#27272a)",
-          borderColor:isLucky?"#fde68a":side==="red"?"#fca5a5":"#a1a1aa",
-          color:isLucky?"#78350f":side==="red"?"#7f1d1d":"#09090b",
-          transform:"rotateY(180deg)",
-          backfaceVisibility:"hidden"
-        }}>
-          <span className="font-extrabold text-lg sm:text-xl leading-none">{isLucky?"★":value}</span>
-          <span className="text-[8px] opacity-50 mt-0.5">{side==="red"?"♥":"♠"}</span>
-        </div>
-      </motion.div>
+      {/* BACK (face-down) */}
+      <div className="absolute inset-0 rounded-md border shadow flex items-center justify-center" style={{
+        background:side==="red"?"linear-gradient(135deg,#991b1b,#dc2626,#991b1b)":"linear-gradient(135deg,#18181b,#3f3f46,#18181b)",
+        borderColor:side==="red"?"#f87171":"#71717a",
+        backfaceVisibility:"hidden"
+      }}>
+        <span className="text-white/60 text-base font-bold">{side==="red"?"♥":"♠"}</span>
+      </div>
+      {/* FRONT (face-up) */}
+      <div className="absolute inset-0 rounded-md border shadow-lg flex flex-col items-center justify-center" style={{
+        background:isLucky?"linear-gradient(135deg,#fef3c7,#fbbf24,#f59e0b)":side==="red"?"linear-gradient(135deg,#fef2f2,#ef4444,#b91c1c)":"linear-gradient(135deg,#fafafa,#71717a,#27272a)",
+        borderColor:isLucky?"#fde68a":side==="red"?"#fca5a5":"#a1a1aa",
+        color:isLucky?"#78350f":side==="red"?"#7f1d1d":"#09090b",
+        transform:"rotateY(180deg)",
+        backfaceVisibility:"hidden"
+      }}>
+        <span className="font-extrabold text-lg sm:text-xl leading-none">{isLucky?"★":value}</span>
+        <span className="text-[8px] opacity-50 mt-0.5">{side==="red"?"♥":"♠"}</span>
+      </div>
     </motion.div>
   );
 }
