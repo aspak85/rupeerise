@@ -21,16 +21,22 @@ const PTS: Record<string,number> = {A:14,K:13,Q:12,J:11,"10":10,"9":9,"8":8,"7":
 function hashPeriod(p: string) { let h=0; for(let i=0;i<p.length;i++) h=((h<<5)-h+p.charCodeAt(i))|0; return h; }
 function pick(h:number,i:number) { return CARDS[Math.abs(h*(i+1)*7+i*13)%CARDS.length]; }
 
+function total(cards:string[]) { return cards.reduce((s,c)=>s+PTS[c],0); }
+
 function genCards(period:string, result:Side|null) {
   const h = hashPeriod(period);
-  const red = [pick(h,0),pick(h,1),pick(h,2)];
-  const black = [pick(h,3),pick(h,4),pick(h,5)];
-  // Ensure winning side has higher total
-  const rT = red.reduce((s,c)=>s+PTS[c],0);
-  const bT = black.reduce((s,c)=>s+PTS[c],0);
-  if((result==="red"||result==="lucky_hit") && rT<=bT) { red[0]="A"; red[1]="K"; }
-  if(result==="black" && bT<=rT) { black[0]="A"; black[1]="K"; }
-  return { red, black, redTotal: red.reduce((s,c)=>s+PTS[c],0), blackTotal: black.reduce((s,c)=>s+PTS[c],0) };
+  let red = [pick(h,0),pick(h,1),pick(h,2)];
+  let black = [pick(h,3),pick(h,4),pick(h,5)];
+  let rT = total(red), bT = total(black);
+  // Break ties so there's always a clear winner visually.
+  if (rT === bT) { red[0] = red[0]==="A" ? "K" : "A"; rT = total(red); }
+  // Swap hands so the winning side ALWAYS has the higher card total.
+  // Swapping is bulletproof — winner's cards are always visibly bigger.
+  const redShouldWin = result==="red" || result==="lucky_hit";
+  const blackShouldWin = result==="black";
+  if (redShouldWin && rT < bT) { [red, black] = [black, red]; }
+  if (blackShouldWin && bT < rT) { [red, black] = [black, red]; }
+  return { red, black, redTotal: total(red), blackTotal: total(black) };
 }
 
 // Cards stay flipped open for 4 seconds so users can clearly see the result.
@@ -77,24 +83,24 @@ export default function LuckyHitPage() {
     void loadState();void loadMyBets();void loadLive();void loadWallets();
     const i1=setInterval(()=>{void loadState();},1000);
     const i2=setInterval(()=>{void loadLive();},2500);
-    const i3=setInterval(()=>{void loadWallets();},3000);
-    const i4=setInterval(()=>{void loadMyBets();},4000);
+    const i3=setInterval(()=>{void loadWallets();},2000);
+    const i4=setInterval(()=>{void loadMyBets();},1500);
     return()=>{clearInterval(i1);clearInterval(i2);clearInterval(i3);clearInterval(i4);};
   },[loadState,loadMyBets,loadLive,loadWallets]);
 
   useEffect(()=>{const id=setInterval(()=>setNow(Date.now()),200);return()=>clearInterval(id);},[]);
   useEffect(()=>{if(!reveal)return;const id=setTimeout(()=>setReveal(null),REVEAL_MS);return()=>clearTimeout(id);},[reveal]);
 
-  // Show win/loss banner when reveal + user had a bet on that round
+  // Show win/loss banner based on the SERVER's bet status (source of truth).
+  // We wait until the server has actually settled the bet (status != pending)
+  // so the banner is never wrong. The effect re-runs as myBets updates.
   useEffect(()=>{
-    if(!reveal||!reveal.result) return;
-    const myBet = myBets.find(b=>b.period===reveal.period);
+    if(!reveal) return;
+    const myBet = myBets.find(b=>b.period===reveal.period && b.status!=="pending");
     if(myBet){
-      if(myBet.side===reveal.result){
-        const payout = myBet.payout || myBet.amount * (reveal.result==="lucky_hit"?9:1.9);
-        setWinBanner({amount:payout,side:reveal.result});
+      if(myBet.status==="won"){
+        setWinBanner({amount:myBet.payout,side:myBet.side});
       } else {
-        // Show loss banner too so user always knows the outcome
         setWinBanner({amount:-myBet.amount,side:myBet.side});
       }
       const id=setTimeout(()=>setWinBanner(null),4500);
@@ -119,27 +125,23 @@ export default function LuckyHitPage() {
   const countdownSec=Math.ceil(effectiveMs/1000);
 
   const placeBet=async()=>{
-    if(!round||!cfg)return;
+    if(!round||!cfg||busy)return;
     if(amount<cfg.minBet)return setToast({kind:"err",msg:`Min ₹${cfg.minBet}`});
     if(amount>cfg.maxBet)return setToast({kind:"err",msg:`Max ₹${cfg.maxBet}`});
     if(amount>totalBal)return setToast({kind:"err",msg:"Insufficient balance"});
-    // INSTANT: show success + deduct BEFORE api call
-    setToast({kind:"ok",msg:`✓ ${formatINR(amount)} on ${LABEL[side]}`});
-    setWallets(prev=>prev.map(w=>{
-      if(w.type==="deposit"){const b=Number(w.balance);if(b>=amount)return{...w,balance:String(b-amount)};}
-      return w;
-    }));
-    // Add to local myBets immediately (optimistic)
-    const fakeBet:MyBet={id:`temp-${Date.now()}`,createdAt:new Date().toISOString(),side,amount,status:"pending",payout:0,period:round.period,roundResult:null};
-    setMyBets(prev=>[fakeBet,...prev]);
-    // API in background
+    // No optimistic fakery — call API, then reload truth from server.
+    // This avoids the "balance goes up after loss" and "win shows as loss"
+    // bugs that optimistic local state was causing.
     setBusy(true);
+    setToast({kind:"ok",msg:`Placing ${formatINR(amount)} on ${LABEL[side]}…`});
     try{
       await api("/lucky-hit/bet",{method:"POST",body:JSON.stringify({side,amount})});
-      void loadState();void loadMyBets();void loadLive();void loadWallets();
+      setToast({kind:"ok",msg:`✓ ${formatINR(amount)} on ${LABEL[side]}`});
+      // Reload everything from server (source of truth)
+      await Promise.all([loadState(),loadMyBets(),loadLive(),loadWallets()]);
     }catch(e){
       setToast({kind:"err",msg:e instanceof ApiError?e.message:"Bet failed"});
-      void loadWallets();void loadMyBets();
+      await loadWallets();
     }finally{setBusy(false);}
   };
 
