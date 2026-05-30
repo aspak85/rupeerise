@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
-import { ArrowDownToLine, Dices, FileText, Receipt, Wallet } from "lucide-react";
+import { useSearchParams, useRouter } from "next/navigation";
+import { ArrowLeft, ArrowDownToLine, Dices, FileText, Receipt, Wallet } from "lucide-react";
 import { api, formatINR } from "@/lib/api";
 
 type TabId = "transaction" | "deposit" | "withdraw" | "game";
@@ -13,6 +13,7 @@ type GameBet = { id: string; createdAt: string; side: string; amount: number; st
 
 export default function HistoryPage() {
   const params = useSearchParams();
+  const router = useRouter();
   const initialTab = (params.get("tab") as TabId) || "transaction";
   const [tab, setTab] = useState<TabId>(initialTab);
   const [events, setEvents] = useState<StatementEvent[]>([]);
@@ -50,7 +51,13 @@ export default function HistoryPage() {
 
   return (
     <div className="max-w-md mx-auto w-full space-y-4 pb-8">
-      <h1 className="text-lg font-bold text-white px-1">History</h1>
+      {/* Back arrow + title */}
+      <div className="flex items-center gap-3">
+        <button onClick={()=>router.back()} className="w-8 h-8 rounded-lg border border-yellow-500/20 bg-black/30 flex items-center justify-center text-zinc-300 hover:text-white hover:bg-yellow-500/10">
+          <ArrowLeft size={16}/>
+        </button>
+        <h1 className="text-lg font-bold text-white">History</h1>
+      </div>
 
       {/* Tab buttons */}
       <div className="flex gap-1 overflow-x-auto no-scrollbar glass rounded-xl p-1">

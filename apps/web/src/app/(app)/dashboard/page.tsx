@@ -174,16 +174,10 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto w-full">
-      {/* Greeting — centered welcome message */}
-      <div className="text-center px-4">
-        <div className="text-xs uppercase tracking-widest text-yellow-400/80">Welcome back</div>
-        <h1 className="text-xl sm:text-3xl font-semibold text-white mt-1">
-          {me?.user.name || me?.user.email || user?.email}
-        </h1>
-      </div>
-      <div className="flex items-center justify-end gap-3">
-          {/* Notification bell */}
-          <div className="relative" ref={notifRef}>
+      {/* Top bar: bell on right */}
+      <div className="flex items-center justify-between gap-3">
+        <div />
+        <div className="relative" ref={notifRef}>
             <button
               onClick={openNotifications}
               className="relative flex items-center justify-center w-10 h-10 rounded-xl glass border border-yellow-500/20 hover:border-yellow-500/40 transition"
@@ -249,6 +243,14 @@ export default function DashboardPage() {
             <span className="font-semibold text-yellow-300">Bronze</span>
           </div>
         </div>
+
+      {/* Welcome message — centered */}
+      <div className="text-center">
+        <div className="text-xs uppercase tracking-widest text-yellow-400/80">Welcome back</div>
+        <h1 className="text-xl sm:text-2xl font-semibold text-white mt-1">
+          {me?.user.name || me?.user.email || user?.email}
+        </h1>
+      </div>
 
       {/* Total balance + Daily Claim — shown immediately with ₹0 placeholders */}
       <div className="grid gap-4 lg:grid-cols-3">
