@@ -99,18 +99,33 @@ async function settleRound(roundId: string, cfg: LuckyHitConfig): Promise<void> 
     const round = await tx.luckyHitRound.findUnique({ where: { id: roundId } });
     if (!round || round.status === 'settled') return;
 
-    // Admin override wins over RNG. Anything else (null / unknown string) falls
-    // back to the weighted random pick so a stale value can't break the game.
+    // Admin override wins over RNG. Otherwise we pick a DETERMINISTIC result
+    // seeded by the round id — so even if several concurrent requests try to
+    // settle the same round, they all compute the SAME result. This is the
+    // core fix for the "loser got paid / result flipped" bug that happened
+    // when two settlement calls picked different random results.
     const FORCED = new Set(['red', 'black', 'lucky_hit']);
     const result =
       round.forcedResult && FORCED.has(round.forcedResult)
         ? (round.forcedResult as 'red' | 'black' | 'lucky_hit')
-        : pickResult(cfg);
+        : pickResult(cfg, round.id);
     const settledAt = new Date();
+
+    // ATOMIC CLAIM: only ONE transaction can flip the round from non-settled
+    // to settled. updateMany with the status filter is atomic — the second
+    // concurrent caller will match 0 rows (status already 'settled') and bail
+    // out BEFORE crediting anyone. This guarantees winners are paid exactly
+    // once and losers are never paid.
+    const claimed = await tx.luckyHitRound.updateMany({
+      where: { id: roundId, status: { not: 'settled' } },
+      data: { status: 'settled', result, settledAt },
+    });
+    if (claimed.count === 0) return; // someone else already settled it
+
     const colorMul = cfg.colorPayout;
     const luckyMul = cfg.luckyHitPayout;
 
-    // Settle every bet on the round.
+    // Settle every bet on the round using the claimed result.
     const bets = await tx.luckyHitBet.findMany({ where: { roundId } });
     for (const b of bets) {
       const won = b.side === result;
@@ -132,34 +147,41 @@ async function settleRound(roundId: string, cfg: LuckyHitConfig): Promise<void> 
           direction: 'credit',
           reason: result === 'lucky_hit' ? 'lucky_hit_win' : 'lucky_hit_color_win',
           refId: round.period,
-          // One credit per (bet) — not per (user, round) — so a user betting
-          // both colours can only win on the side that matched.
+          // One credit per (bet) — idempotency key guards against any retry.
           idempotencyKey: `lucky_hit:win:${b.id}`,
           tx,
         });
       }
     }
-
-    await tx.luckyHitRound.update({
-      where: { id: roundId },
-      data: { status: 'settled', result, settledAt },
-    });
   });
 }
 
+/** Stable 32-bit hash of a string (same on every call/replica). */
+function hashStr(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+  return Math.abs(h);
+}
+
 /**
- * Pick a weighted-random result. Falls back to 'red' if all weights are zero
- * so the game keeps working even if an admin saves a degenerate config.
+ * Pick a DETERMINISTIC weighted result seeded by the round id. The same round
+ * always resolves to the same result, no matter how many times (or how
+ * concurrently) settlement runs. Respects the admin weights. Falls back to
+ * 'red' if all weights are zero.
  */
-function pickResult(cfg: LuckyHitConfig): 'red' | 'black' | 'lucky_hit' {
+function pickResult(cfg: LuckyHitConfig, seed: string): 'red' | 'black' | 'lucky_hit' {
   const r = Math.max(0, Math.floor(cfg.redWeight));
   const b = Math.max(0, Math.floor(cfg.blackWeight));
   const l = Math.max(0, Math.floor(cfg.luckyHitWeight));
   const total = r + b + l;
   if (total <= 0) return 'red';
-  let n = Math.random() * total;
-  if ((n -= r) < 0) return 'red';
-  if ((n -= b) < 0) return 'black';
+  // Mix in a server-only salt so clients can't predict the result from the
+  // (publicly visible) round id. Still deterministic per round → concurrent
+  // settlements all agree.
+  const salt = process.env.LUCKY_HIT_SALT || 'rr-lucky-hit-secret-2026';
+  const n = hashStr(seed + ':' + salt) % total;
+  if (n < r) return 'red';
+  if (n < r + b) return 'black';
   return 'lucky_hit';
 }
 
