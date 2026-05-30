@@ -26,7 +26,7 @@ router.get('/state', requireAuth, async (_req: AuthedRequest, res) => {
   try {
     await settleExpiredRounds();
     const { round, cfg } = await getOrCreateCurrentRound();
-    const history = await recentSettledRounds(30);
+    const history = await recentSettledRounds(50);
     return res.json({
       enabled: cfg.enabled,
       round,
