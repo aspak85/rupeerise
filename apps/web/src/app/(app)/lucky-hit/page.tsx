@@ -115,10 +115,24 @@ export default function LuckyHitPage() {
     if(!round||!cfg)return;setToast(null);
     if(amount<cfg.minBet)return setToast({kind:"err",msg:`Min ₹${cfg.minBet}`});
     if(amount>cfg.maxBet)return setToast({kind:"err",msg:`Max ₹${cfg.maxBet}`});
+    if(amount>totalBal)return setToast({kind:"err",msg:"Insufficient balance"});
+    // OPTIMISTIC: show success instantly, deduct balance locally
     setBusy(true);
-    try{await api("/lucky-hit/bet",{method:"POST",body:JSON.stringify({side,amount})});setToast({kind:"ok",msg:`${formatINR(amount)} on ${LABEL[side]}`});void loadState();void loadMyBets();void loadLive();void loadWallets();}
-    catch(e){setToast({kind:"err",msg:e instanceof ApiError?e.message:"Bet failed"});}
-    finally{setBusy(false);}
+    setToast({kind:"ok",msg:`✓ ${formatINR(amount)} on ${LABEL[side]}`});
+    // Optimistically update local wallet display
+    setWallets(prev=>prev.map(w=>{
+      if(w.type==="deposit"){const b=Number(w.balance);if(b>=amount)return{...w,balance:String(b-amount)};}
+      return w;
+    }));
+    // Fire API in background — if it fails, reload will correct the state
+    try{
+      await api("/lucky-hit/bet",{method:"POST",body:JSON.stringify({side,amount})});
+      // Refresh all data after successful bet
+      void loadState();void loadMyBets();void loadLive();void loadWallets();
+    }catch(e){
+      setToast({kind:"err",msg:e instanceof ApiError?e.message:"Bet failed — balance restored"});
+      void loadWallets(); // Restore correct balance
+    }finally{setBusy(false);}
   };
 
   if(!data||!cfg||!round||!displayRound)return<div className="p-10 text-center text-zinc-400">Loading…</div>;
@@ -173,9 +187,25 @@ export default function LuckyHitPage() {
       {/* === CARDS — BOTH SIDES OPEN === */}
       <CardsArea phase={phase} displayRound={displayRound} cfg={cfg} myRevealBet={myRevealBet}/>
 
-      {/* History dots */}
-      <div className="flex flex-wrap gap-1 px-1">
-        {data.history.slice(0,30).map(r=>(<span key={r.id} className={`w-2.5 h-2.5 rounded-full ${r.result?DOT[r.result]:"bg-zinc-700"}`} title={r.period}/>))}
+      {/* Results grid — last 50 in a 10-column pattern grid */}
+      <div className="glass rounded-xl p-3">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-[10px] uppercase tracking-widest text-zinc-400 flex items-center gap-1"><History size={10}/> Last 50 results</span>
+          <div className="flex items-center gap-2 text-[9px] text-zinc-500">
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500 inline-block"/>Red</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-zinc-700 ring-1 ring-white/30 inline-block"/>Black</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-400 inline-block"/>Lucky</span>
+          </div>
+        </div>
+        <div className="grid grid-cols-10 gap-1">
+          {data.history.slice(0,50).map((r,i)=>(
+            <div key={r.id} className="flex flex-col items-center gap-0.5">
+              <span className={`w-3 h-3 rounded-full ${r.result?DOT[r.result]:"bg-zinc-700"}`}/>
+              <span className="text-[7px] text-zinc-600 tabular-nums">{r.period.slice(-3)}</span>
+            </div>
+          ))}
+          {data.history.length===0&&<div className="col-span-10 text-center text-xs text-zinc-500 py-2">No results yet</div>}
+        </div>
       </div>
 
       {/* Bet buttons with pool amounts */}
