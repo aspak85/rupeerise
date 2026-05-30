@@ -116,7 +116,7 @@ export default function ProfilePage() {
               <CopyUID uid={me.user.uid} />
             </div>
             <div className="text-xs text-white/70 mt-1">
-              Last login: {me.user.lastLoginAt ? new Date(me.user.lastLoginAt).toLocaleString("en-IN") : "—"}
+              Online now · Joined {new Date(me.user.createdAt).toLocaleDateString("en-IN")}
             </div>
           </div>
         </div>

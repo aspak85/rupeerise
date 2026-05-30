@@ -70,7 +70,7 @@ export default function LuckyHitPage() {
       prevPeriodRef.current=s.round.period;
     }catch{}
   },[loadWallets]);
-  const loadMyBets = useCallback(async()=>{try{const r=await api<{bets:MyBet[]}>("/lucky-hit/my-bets?take=20");setMyBets(r.bets);}catch{}},[]);
+  const loadMyBets = useCallback(async()=>{try{const r=await api<{bets:MyBet[]}>("/lucky-hit/my-bets?take=50");setMyBets(r.bets);}catch{}},[]);
   const loadLive = useCallback(async()=>{try{const r=await api<{bets:LiveBet[]}>("/lucky-hit/live-bets?take=15");setLiveBets(r.bets);}catch{}},[]);
 
   useEffect(()=>{
@@ -119,26 +119,27 @@ export default function LuckyHitPage() {
   const countdownSec=Math.ceil(effectiveMs/1000);
 
   const placeBet=async()=>{
-    if(!round||!cfg)return;setToast(null);
+    if(!round||!cfg)return;
     if(amount<cfg.minBet)return setToast({kind:"err",msg:`Min ₹${cfg.minBet}`});
     if(amount>cfg.maxBet)return setToast({kind:"err",msg:`Max ₹${cfg.maxBet}`});
     if(amount>totalBal)return setToast({kind:"err",msg:"Insufficient balance"});
-    // OPTIMISTIC: show success instantly, deduct balance locally
-    setBusy(true);
+    // INSTANT: show success + deduct BEFORE api call
     setToast({kind:"ok",msg:`✓ ${formatINR(amount)} on ${LABEL[side]}`});
-    // Optimistically update local wallet display
     setWallets(prev=>prev.map(w=>{
       if(w.type==="deposit"){const b=Number(w.balance);if(b>=amount)return{...w,balance:String(b-amount)};}
       return w;
     }));
-    // Fire API in background — if it fails, reload will correct the state
+    // Add to local myBets immediately (optimistic)
+    const fakeBet:MyBet={id:`temp-${Date.now()}`,createdAt:new Date().toISOString(),side,amount,status:"pending",payout:0,period:round.period,roundResult:null};
+    setMyBets(prev=>[fakeBet,...prev]);
+    // API in background
+    setBusy(true);
     try{
       await api("/lucky-hit/bet",{method:"POST",body:JSON.stringify({side,amount})});
-      // Refresh all data after successful bet
       void loadState();void loadMyBets();void loadLive();void loadWallets();
     }catch(e){
-      setToast({kind:"err",msg:e instanceof ApiError?e.message:"Bet failed — balance restored"});
-      void loadWallets(); // Restore correct balance
+      setToast({kind:"err",msg:e instanceof ApiError?e.message:"Bet failed"});
+      void loadWallets();void loadMyBets();
     }finally{setBusy(false);}
   };
 
